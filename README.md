@@ -1,36 +1,40 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Gooners (fantasy-basketball)
 
-## Getting Started
+Live site for a 12-manager ESPN fantasy basketball league played as six two-person duos. Each week the duos' combined ESPN stats go head to head across nine categories, and the site keeps the standings, weekly matchups, payouts and punishments up to date on its own.
 
-First, run the development server:
+## How it works
+
+- **ESPN sync.** `src/lib/espn.ts` reads the league from ESPN's fantasy JSON endpoint (the league is public, so no login is needed). Page views trigger a sync when data is more than 5 minutes old, and a Vercel Cron job runs a backup sync daily.
+- **Duo scoring.** `src/lib/scoring.ts` sums both managers' raw stats, then compares duos category by category. FG% and FT% come from summed makes and attempts, never from averaging percentages. Turnovers are lower-is-better.
+- **Storage.** Neon Postgres via Drizzle (`src/lib/db/schema.ts`): one config row, one row per ESPN team per week, and a week-final flag. Rows typed in by hand are marked `manual` and are never overwritten by a sync.
+- **Admin.** `/admin` is password protected. It maps ESPN teams to managers, edits duo names, punishments and pairings, and corrects scores.
+
+## Stack
+
+Next.js 16 (App Router, TypeScript), Drizzle ORM, Neon Postgres, Vitest, hosted on Vercel.
+
+## Local development
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
+pnpm install
+cp .env.example .env.local   # fill in values
+pnpm db:push                 # create tables in Neon
 pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Without `DATABASE_URL` the site still runs read-only, pulling straight from ESPN.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+```bash
+pnpm test        # scoring and calendar tests
+pnpm typecheck
+pnpm lint
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+## Environment variables
 
-## Learn More
-
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Name | Purpose |
+| --- | --- |
+| `DATABASE_URL` | Neon connection string. Added automatically by the Vercel Neon integration. |
+| `ADMIN_PASSWORD` | Password for `/admin`. |
+| `CRON_SECRET` | Shared secret Vercel Cron sends to `/api/sync`. |
+| `ESPN_S2`, `ESPN_SWID` | Only if the ESPN league is made private. |
