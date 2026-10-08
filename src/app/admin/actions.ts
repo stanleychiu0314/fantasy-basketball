@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { isAdmin, logIn, logOut } from "@/lib/auth";
-import { readConfig, saveManualStats, setWeekFinal, syncFromEspn, writeConfig } from "@/lib/league";
+import { dismissTradeAlert, readConfig, saveManualStats, setPaid, setWeekFinal, syncFromEspn, writeConfig } from "@/lib/league";
 import { cleanConfig, cleanStats } from "@/lib/validate";
 import type { LeagueConfig, StatLine } from "@/types/league";
 
@@ -69,4 +69,22 @@ export async function setFinalAction(week: number, final: boolean): Promise<Acti
   await setWeekFinal(week, final);
   refresh();
   return { ok: true, message: final ? "Week marked final" : "Week reopened" };
+}
+
+export async function setPaidAction(member: string, paid: boolean): Promise<ActionResult> {
+  const denied = await guard();
+  if (denied) return denied;
+  if (!MEMBER_KEY.test(member)) return { ok: false, message: "That manager does not exist." };
+  await setPaid(member, paid);
+  refresh();
+  return { ok: true, message: paid ? "Marked paid" : "Marked unpaid" };
+}
+
+export async function dismissTradeAlertAction(id: string): Promise<ActionResult> {
+  const denied = await guard();
+  if (denied) return denied;
+  if (!/^\d+:\d+:\d+$/.test(id)) return { ok: false, message: "Unknown alert." };
+  await dismissTradeAlert(id);
+  refresh();
+  return { ok: true, message: "Alert dismissed" };
 }

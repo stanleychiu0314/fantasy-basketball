@@ -68,4 +68,37 @@ export type LeagueState = {
   espnStatus: "ok" | "private" | "error" | "off";
   lastSynced: string | null;
   hasDatabase: boolean;
+  /** member -> buy-in paid */
+  paid: Record<MemberKey, boolean>;
+  /** Team-weeks the commissioner corrected by hand. */
+  manual: { week: number; member: MemberKey }[];
+  /** Undismissed teammate-to-teammate player moves. */
+  tradeAlerts: TradeAlert[];
+};
+
+export type TradeAlert = {
+  id: string;
+  playerName: string;
+  fromMember: MemberKey;
+  toMember: MemberKey;
+  detectedAt: string;
+};
+
+export type ScoreEdit = {
+  id: number;
+  week: number;
+  member: MemberKey;
+  action: "set" | "revert";
+  oldStats: StatLine | null;
+  newStats: StatLine | null;
+  createdAt: string;
+};
+
+/** One player's totals for one week, counting only days he was in the active lineup. */
+export type PlayerWeek = StatLine & {
+  playerId: number;
+  name: string;
+  member: MemberKey;
+  /** Game days played while in the active lineup. */
+  games: number;
 };

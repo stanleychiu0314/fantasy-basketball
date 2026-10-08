@@ -18,7 +18,7 @@ Next.js 16 (App Router, TypeScript), Drizzle ORM, Neon Postgres, Vitest, hosted 
 ```bash
 pnpm install
 cp .env.example .env.local   # fill in values
-pnpm db:push                 # create tables in Neon
+pnpm db:migrate              # create tables in Neon
 pnpm dev
 ```
 

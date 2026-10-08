@@ -3,17 +3,26 @@
 import { useState, useTransition } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { LeagueConfig, LeagueState, StatLine } from "@/types/league";
+import type { LeagueConfig, LeagueState, ScoreEdit, StatLine } from "@/types/league";
 import { FIELDS, FIELD_LABEL, emptyLine, memberKeys, pairsFor } from "@/lib/scoring";
 import { weekRange } from "@/lib/season";
-import { logoutAction, saveConfigAction, saveStatsAction, setFinalAction, syncAction, type ActionResult } from "@/app/admin/actions";
+import {
+  dismissTradeAlertAction,
+  logoutAction,
+  saveConfigAction,
+  saveStatsAction,
+  setFinalAction,
+  setPaidAction,
+  syncAction,
+  type ActionResult,
+} from "@/app/admin/actions";
 import { MatchupCard } from "../MatchupCard";
 import { WeekChips } from "../WeekChips";
 
-type Props = { state: LeagueState; manual: { week: number; member: string }[] };
+type Props = { state: LeagueState; edits: ScoreEdit[] };
 
 /** Commissioner tools: ESPN sync, league settings, team mapping, schedule and score corrections. */
-export function AdminApp({ state, manual }: Props) {
+export function AdminApp({ state, edits }: Props) {
   const router = useRouter();
   const [config, setConfig] = useState<LeagueConfig>(state.config);
   const [week, setWeek] = useState(state.currentWeek);
@@ -38,6 +47,10 @@ export function AdminApp({ state, manual }: Props) {
     patch({ schedule: { ...config.schedule, [String(week)]: next } });
   };
   const usedTwice = new Set(pairs.flat()).size !== pairs.flat().length;
+  const managerName = (key: string) => {
+    const duo = config.duos.find((d) => key.startsWith(d.id));
+    return duo ? (key.endsWith("a") ? duo.a : duo.b) : key;
+  };
   const synced = state.lastSynced ? new Date(state.lastSynced).toLocaleString() : "never";
 
   return (
@@ -58,6 +71,26 @@ export function AdminApp({ state, manual }: Props) {
       )}
       {msg && <p className={msg.ok ? "ok" : "err"} role="status">{msg.message}</p>}
 
+      {state.tradeAlerts.length > 0 && (
+        <section className="card" style={{ borderColor: "var(--loss)" }}>
+          <p className="eyebrow" style={{ color: "var(--loss)" }}>Possible teammate trades</p>
+          <p className="note" style={{ marginTop: 6 }}>
+            These players moved straight from one manager to their duo partner. Check ESPN, reverse it if it breaks the rule, then dismiss.
+          </p>
+          <div style={{ display: "grid", gap: 8, marginTop: 10 }}>
+            {state.tradeAlerts.map((a) => (
+              <div key={a.id} className="row2" style={{ justifyContent: "space-between" }}>
+                <span>
+                  <b>{a.playerName}</b>: {managerName(a.fromMember)} to {managerName(a.toMember)}
+                  <span className="note"> · {new Date(a.detectedAt).toLocaleString()}</span>
+                </span>
+                <button className="btn" disabled={pending} onClick={() => run(() => dismissTradeAlertAction(a.id))}>Dismiss</button>
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
       <section className="card">
         <p className="eyebrow">ESPN</p>
         <div className="row2" style={{ marginTop: 8 }}>
@@ -68,6 +101,23 @@ export function AdminApp({ state, manual }: Props) {
           <button className="btn" disabled={pending || !state.hasDatabase} onClick={() => run(syncAction)}>Sync now</button>
         </div>
         <p className="note" style={{ marginTop: 8 }}>The site syncs on its own every few minutes while people are viewing it.</p>
+      </section>
+
+      <section className="card">
+        <p className="eyebrow" style={{ marginBottom: 10 }}>
+          Buy-ins · {Object.values(state.paid).filter(Boolean).length} of {config.duos.length * 2} paid
+        </p>
+        <div className="fields">
+          {config.duos.flatMap((d) =>
+            memberKeys(d).map((key, i) => (
+              <label key={key} className="switch" style={{ color: "var(--fg)" }}>
+                <input type="checkbox" checked={!!state.paid[key]} disabled={pending || !state.hasDatabase}
+                  onChange={(e) => run(() => setPaidAction(key, e.target.checked))} />
+                <span>{i ? d.b : d.a}</span>
+              </label>
+            )),
+          )}
+        </div>
       </section>
 
       <section className="card">
@@ -182,7 +232,7 @@ export function AdminApp({ state, manual }: Props) {
               key={`${week}-${key}`}
               label={`${i ? d.b : d.a} (${d.name})`}
               stats={state.scores[week]?.[key] ?? null}
-              isManual={manual.some((m) => m.week === week && m.member === key)}
+              isManual={state.manual.some((m) => m.week === week && m.member === key)}
               disabled={pending || !state.hasDatabase}
               onSave={(s) => run(() => saveStatsAction(week, key, s))}
               onRevert={() => run(() => saveStatsAction(week, key, null))}
@@ -190,8 +240,39 @@ export function AdminApp({ state, manual }: Props) {
           )),
         )}
       </section>
+
+      <section className="card">
+        <p className="eyebrow">Score edit history</p>
+        {edits.length === 0 ? (
+          <p className="note" style={{ marginTop: 8 }}>No manual changes yet.</p>
+        ) : (
+          <div className="scroll" style={{ marginTop: 8 }}>
+            <table>
+              <thead><tr><th>When</th><th>Week</th><th>Manager</th><th>Change</th></tr></thead>
+              <tbody>
+                {edits.map((e) => (
+                  <tr key={e.id}>
+                    <td>{new Date(e.createdAt).toLocaleString()}</td>
+                    <td>{e.week}</td>
+                    <td>{managerName(e.member)}</td>
+                    <td>{e.action === "revert" ? "Reverted to ESPN" : describeChange(e.oldStats, e.newStats)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
   );
+}
+
+/** "PTS 410 to 432, REB 180 to 175" for the fields that changed. */
+function describeChange(before: StatLine | null, after: StatLine | null): string {
+  if (!after) return "Cleared";
+  if (!before) return "Entered by hand (no ESPN data)";
+  const changed = FIELDS.filter((f) => before[f] !== after[f]).map((f) => `${FIELD_LABEL[f]} ${before[f]} to ${after[f]}`);
+  return changed.length ? changed.join(", ") : "No change";
 }
 
 type RowProps = {

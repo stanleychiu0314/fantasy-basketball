@@ -1,5 +1,5 @@
 import type { LeagueState } from "@/types/league";
-import { duoSubtitle, type Standings } from "@/lib/scoring";
+import { duoSubtitle, memberKeys, type Standings } from "@/lib/scoring";
 import { CountUp } from "../CountUp";
 
 type Props = { state: LeagueState; standings: Standings };
@@ -38,6 +38,20 @@ export function StakesPanel({ state, standings }: Props) {
         <div className="card"><span className="eyebrow">Total pot</span><span className="big"><CountUp value={pool} prefix="$" /></span><span className="note">{players} managers x ${buyIn}</span></div>
         <div className="card"><span className="eyebrow">First place</span><span className="big"><CountUp value={pool - refund} prefix="$" /></span><span className="note">Split by 2 managers</span></div>
         <div className="card"><span className="eyebrow">Refunded</span><span className="big"><CountUp value={refund} prefix="$" /></span><span className="note">Second place gets it back</span></div>
+      </div>
+      <div className="card">
+        <p className="eyebrow">
+          Buy-ins · {Object.values(state.paid).filter(Boolean).length} of {players} paid
+        </p>
+        <div className="paid-list">
+          {duos.flatMap((d) =>
+            memberKeys(d).map((key, i) => (
+              <span key={key} className={`tag${state.paid[key] ? " paid" : ""}`}>
+                {state.paid[key] ? "\u2713 " : ""}{i ? d.b : d.a}
+              </span>
+            )),
+          )}
+        </div>
       </div>
       <div className="slots">
         {slots.map((s) => {
