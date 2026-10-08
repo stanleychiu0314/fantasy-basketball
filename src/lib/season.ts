@@ -7,7 +7,7 @@ const FIRST_WEEK_DAYS = 6;
 /**
  * ESPN plays 24 matchups across 25 calendar weeks. The extra week is the
  * All-Star break (no games Feb 19 to 24), which ESPN folds into matchup 18,
- * Feb 15 to 28. Verify on the ESPN league schedule page.
+ * Feb 15 to 28. Confirmed against the ESPN league schedule on 8 Oct 2026.
  */
 const DOUBLE_WEEK = 18;
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
