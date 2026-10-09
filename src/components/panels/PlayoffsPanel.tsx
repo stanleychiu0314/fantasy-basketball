@@ -18,7 +18,7 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
         <h2 className="h2">Playoffs</h2>
         <p className="lede">
           The top {PLAYOFF_SPOTS} duos after Week {regularWeeks} make it. The 1st seed picks its semifinal opponent. Semifinals in
-          Week {bracket.semisWeek}, then the final and the 3rd place game in Week {bracket.finalsWeek}.
+          Week {bracket.semisWeek}, when seeds 5 and 6 also play for last place. The final and the 3rd place game are in Week {bracket.finalsWeek}.
         </p>
       </div>
 
@@ -56,6 +56,7 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
             <BracketGame key={i} state={state} week={bracket.semisWeek} game={g} onWeek={onWeek}
               tbd={i === 0 ? ["1st seed", "1st seed's pick"] : ["Seed", "Seed"]} />
           ))}
+          <BracketGame state={state} week={bracket.semisWeek} game={bracket.lastPlace} onWeek={onWeek} tbd={["5th seed", "6th seed"]} />
         </div>
         <div className="round">
           <h3>Finals</h3>
@@ -71,7 +72,7 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
           <li><b>Seeding:</b> regular-season standings after Week {regularWeeks}, using the normal tiebreakers.</li>
           <li><b>1st seed&apos;s pick:</b> they choose which of seeds 2, 3 or 4 to play. The other two play each other.</li>
           <li><b>Ties:</b> a tied playoff matchup goes to the higher seed.</li>
-          <li><b>Final placement:</b> final winner 1st, runner-up 2nd, 3rd place game decides 3rd and 4th. 5th and 6th go by regular-season record.</li>
+          <li><b>Final placement:</b> final winner 1st, runner-up 2nd, 3rd place game decides 3rd and 4th, last place game decides 5th and 6th.</li>
         </ul>
       </div>
     </>

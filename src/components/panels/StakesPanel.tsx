@@ -38,7 +38,7 @@ export function StakesPanel({ state, bracket }: Props) {
       <div>
         <h2 className="h2">What&apos;s on the line</h2>
         <p className="lede">
-          Everyone puts in ${buyIn}. The playoffs decide who gets paid and who pays for it: the final settles 1st and 2nd, the 3rd place game settles 3rd and 4th, and the two duos that miss the playoffs finish 5th and 6th by record. Everything is settled after Week {weeks} ({weekRange(weeks)}).
+          Everyone puts in ${buyIn}. The playoffs decide who gets paid and who pays for it: the final settles 1st and 2nd, the 3rd place game settles 3rd and 4th, and the last place game between seeds 5 and 6 settles who finishes last. Everything is settled after Week {weeks} ({weekRange(weeks)}).
         </p>
       </div>
       <div className="pot">

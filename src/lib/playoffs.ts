@@ -26,6 +26,8 @@ export type Bracket = {
   seed1Opponent: Duo | null;
   seed1Picked: boolean;
   semis: Game[];
+  /** Seeds 5 and 6, played in the semifinals week. The loser finishes last. */
+  lastPlace: Game;
   final: Game;
   thirdPlace: Game;
   /** Places 1 to 6, best first. Each slot is null until it is decided or projected. */
@@ -58,7 +60,8 @@ export function computeBracket(state: State): Bracket {
   const finalsWeek = regularWeeks + 2;
   const { rows, lastPlayed } = computeStandings(state);
   const seeds = rows.slice(0, PLAYOFF_SPOTS).map((r) => r.duo);
-  const seedOf = new Map(seeds.map((d, i) => [d.id, i + 1]));
+  // Seeds run 1 to 6: the top four play for the title, 5 and 6 play for last place.
+  const seedOf = new Map(rows.map((r, i) => [r.duo.id, i + 1]));
   const hasTable = lastPlayed > 0;
 
   const picked = hasTable ? seeds.slice(1).find((d) => d.id === seed1Pick) ?? null : null;
@@ -69,15 +72,16 @@ export function computeBracket(state: State): Bracket {
     playGame(state, semisWeek, "Semifinal", hasTable ? seeds[0] : null, seed1Opponent, seedOf),
     playGame(state, semisWeek, "Semifinal", others[0] ?? null, others[1] ?? null, seedOf),
   ];
+  const lastPlace = playGame(state, semisWeek, "Last place game", hasTable ? rows[4]?.duo ?? null : null, hasTable ? rows[5]?.duo ?? null : null, seedOf);
   const final = playGame(state, finalsWeek, "Final", semis[0].winner, semis[1].winner, seedOf);
   const thirdPlace = playGame(state, finalsWeek, "3rd place game", semis[0].loser, semis[1].loser, seedOf);
 
-  const decided = !!final.winner && !!thirdPlace.winner;
+  const decided = !!final.winner && !!thirdPlace.winner && !!lastPlace.winner;
   const placements: (Duo | null)[] = decided
-    ? [final.winner, final.loser, thirdPlace.winner, thirdPlace.loser, rows[4]?.duo ?? null, rows[5]?.duo ?? null]
+    ? [final.winner, final.loser, thirdPlace.winner, thirdPlace.loser, lastPlace.winner, lastPlace.loser]
     : rows.map((r) => (hasTable ? r.duo : null));
 
-  return { semisWeek, finalsWeek, seeds, seed1Opponent, seed1Picked: !!picked, semis, final, thirdPlace, placements, decided, regularRows: rows };
+  return { semisWeek, finalsWeek, seeds, seed1Opponent, seed1Picked: !!picked, semis, lastPlace, final, thirdPlace, placements, decided, regularRows: rows };
 }
 
 export const isPlayoffWeek = (state: Pick<LeagueState, "config">, week: number) => week > state.config.regularWeeks;
@@ -91,7 +95,7 @@ export function weekLabel(state: Pick<LeagueState, "config">, week: number): str
 
 /** Every game scheduled in a week: the round robin in the regular season, the bracket in the playoffs. */
 export function gamesForWeek(state: State, week: number, bracket = computeBracket(state)): Game[] {
-  if (week === bracket.semisWeek) return bracket.semis;
+  if (week === bracket.semisWeek) return [...bracket.semis, bracket.lastPlace];
   if (week === bracket.finalsWeek) return [bracket.final, bracket.thirdPlace];
   const byId = new Map(state.config.duos.map((d) => [d.id, d]));
   return pairsFor(state, week).map(([x, y]) => {

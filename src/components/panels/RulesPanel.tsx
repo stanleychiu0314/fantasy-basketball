@@ -74,9 +74,10 @@ export function RulesPanel({ state }: { state: LeagueState }) {
         <p className="eyebrow">Playoffs</p>
         <ul className="clean">
           <li><b>Regular season:</b> Weeks 1 to {regularWeeks} ({spanRange(1, regularWeeks)}).</li>
-          <li><b>Who gets in:</b> the top 4 duos in the standings. 5th and 6th are done for the season.</li>
+          <li><b>Who gets in:</b> the top 4 duos in the standings.</li>
           <li><b>1st seed&apos;s pick:</b> the 1st seed chooses its semifinal opponent from seeds 2, 3 and 4. The other two play each other.</li>
           <li><b>Week {semis}, semifinals</b> ({weekRange(semis)}): two duo-vs-duo matchups, same nine categories.</li>
+          <li><b>Week {semis}, last place game:</b> seeds 5 and 6 play each other. The loser finishes 6th and takes the hardest punishment.</li>
           <li><b>Week {weeks}, finals</b> ({weekRange(weeks)}): semifinal winners play for 1st, semifinal losers play for 3rd.</li>
           <li><b>Playoff ties:</b> a tied playoff matchup goes to the higher seed.</li>
         </ul>

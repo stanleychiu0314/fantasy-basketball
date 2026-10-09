@@ -22,6 +22,9 @@ describe("playoff bracket", () => {
     expect(b.semis[0].a?.id).toBe(b.seeds[0].id);
     expect(b.semis[0].b?.id).toBe(b.seeds[3].id);
     expect(b.seed1Picked).toBe(false);
+    expect(gamesForWeek(seededState(), 2).map((g) => g.label)).toEqual(["Semifinal", "Semifinal", "Last place game"]);
+    expect(b.lastPlace.seedA).toBe(5);
+    expect(b.lastPlace.seedB).toBe(6);
   });
 
   it("lets the 1st seed pick its opponent", () => {
@@ -48,11 +51,13 @@ describe("playoff bracket", () => {
     expect(finals[0].b?.id).toBe(b0.seeds[2].id);
   });
 
-  it("settles all six places after the finals", () => {
+  it("settles all six places after the finals and the last place game", () => {
     const s = seededState();
     const before = computeBracket(s);
     const seeds = before.seeds.map((d) => `${d.id}a`);
-    s.scores[2] = { [seeds[0]]: line(90), [seeds[3]]: line(10), [seeds[1]]: line(90), [seeds[2]]: line(10) };
+    const [fifth, sixth] = before.regularRows.slice(4).map((r) => `${r.duo.id}a`);
+    // Semis week: seeds 1 and 2 advance; the 6th seed beats the 5th for 5th place.
+    s.scores[2] = { [seeds[0]]: line(90), [seeds[3]]: line(10), [seeds[1]]: line(90), [seeds[2]]: line(10), [fifth]: line(5), [sixth]: line(50) };
     s.scores[3] = { [seeds[0]]: line(10), [seeds[1]]: line(90), [seeds[3]]: line(90), [seeds[2]]: line(10) };
     s.final[2] = true;
     s.final[3] = true;
@@ -60,8 +65,8 @@ describe("playoff bracket", () => {
     expect(b.decided).toBe(true);
     // Seed 2 wins the final over seed 1; seed 4 takes 3rd over seed 3; 5th and 6th by record.
     const id = (i: number) => before.seeds[i].id;
-    const rest = before.regularRows.slice(4).map((r) => r.duo.id);
-    expect(b.placements.map((d) => d?.id)).toEqual([id(1), id(0), id(3), id(2), ...rest]);
+    const [r5, r6] = before.regularRows.slice(4).map((r) => r.duo.id);
+    expect(b.placements.map((d) => d?.id)).toEqual([id(1), id(0), id(3), id(2), r6, r5]);
   });
 
   it("does not count playoff weeks in the regular-season table", () => {

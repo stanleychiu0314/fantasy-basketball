@@ -54,9 +54,9 @@ export function WeeklyPanel({ state, week, onWeek }: Props) {
             <PendingCard
               key={i}
               label={g.label}
-              a={g.a?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" ? "To be seeded" : "Semifinal loser")}
-              b={g.b?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" ? "To be seeded" : "Semifinal loser")}
-              note={g.label === "Semifinal" ? "Set once the regular season ends." : "Set once the semifinals are final."}
+              a={g.a?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" || g.label === "Last place game" ? "To be seeded" : "Semifinal loser")}
+              b={g.b?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" || g.label === "Last place game" ? "To be seeded" : "Semifinal loser")}
+              note={g.label === "Final" || g.label === "3rd place game" ? "Set once the semifinals are final." : "Set once the regular season ends."}
             />
           ),
         )}
