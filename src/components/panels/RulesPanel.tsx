@@ -1,7 +1,7 @@
 import { CATS } from "@/lib/scoring";
 
 const STEPS = [
-  ["1", "Pair up", "12 managers form 6 duos. Each manager keeps their own 14-man ESPN roster. A duo's week is both rosters added together."],
+  ["1", "Pair up", "12 managers form 6 duos. Each manager keeps their own 13-man ESPN roster, plus up to 3 injured reserve spots. A duo's week is both rosters added together."],
   ["2", "Weekly matchup", "Each week the 6 duos are drawn into 3 head-to-head matchups, duo against duo."],
   ["3", "Win categories", "Compare the combined totals in all 9 categories. Every category is a point, so a matchup ends like 5-3-1."],
   ["4", "Climb the table", "A matchup win goes in the W column. Standings rank by matchup record, then total category wins."],

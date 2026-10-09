@@ -27,8 +27,10 @@ const STAT_IDS: Record<StatField, number> = {
   tpm: 17,
 };
 
-/** Lineup slots whose stats do not count toward the team: bench and injured reserve. */
-const INACTIVE_SLOTS = new Set([12, 13]);
+/** ESPN lineup slot ids. Bench and injured reserve stats do not count toward the team. */
+const BENCH_SLOT = 12;
+const IR_SLOT = 13;
+const INACTIVE_SLOTS = new Set([BENCH_SLOT, IR_SLOT]);
 /** ESPN stat entry markers: actual (not projected) stats for a single scoring period (day). */
 const ACTUAL_STATS = 0;
 const SINGLE_DAY_SPLIT = 5;
@@ -69,7 +71,7 @@ export type EspnLeague = {
   schedule?: { matchupPeriodId: number; home?: EspnSide; away?: EspnSide }[];
 };
 
-export type RosterPlayer = { id: number; name: string };
+export type RosterPlayer = { id: number; name: string; ir?: boolean };
 
 export type EspnSnapshot = {
   currentMatchupPeriod: number;
@@ -146,7 +148,7 @@ export function parseLeague(raw: EspnLeague): EspnSnapshot {
     rosters[t.id] = (t.roster?.entries ?? []).flatMap((e) => {
       const id = e.playerId ?? e.playerPoolEntry?.player?.id;
       const name = e.playerPoolEntry?.player?.fullName;
-      return id !== undefined && name ? [{ id, name }] : [];
+      return id !== undefined && name ? [{ id, name, ir: e.lineupSlotId === IR_SLOT }] : [];
     });
   }
   // Each ESPN matchup period maps to one ESPN week. If a period ever spans

@@ -6,7 +6,7 @@ import { fetchDay, fetchEspn, type EspnSnapshot, type RosterPlayer } from "@/lib
 import { defaultConfig, normalizeConfig, SEASON_START, weekFromDate } from "@/lib/season";
 import { FIELDS, memberKeys } from "@/lib/scoring";
 import { detectTeammateMoves } from "@/lib/trades";
-import type { LeagueConfig, LeagueState, MemberKey, PlayerWeek, ScoreEdit, StatLine } from "@/types/league";
+import type { LeagueConfig, LeagueState, MemberKey, PlayerWeek, RosterEntry, ScoreEdit, StatLine } from "@/types/league";
 
 const CONFIG_ROW_ID = 1;
 /** How stale ESPN data may get before a page view triggers a fresh sync. */
@@ -29,13 +29,15 @@ function teamToMember(config: LeagueConfig): Map<number, MemberKey> {
   return map;
 }
 
-/** Turn ESPN team rosters into member rosters (names only), falling back to manual ones. */
+/** Turn ESPN team rosters into member rosters, falling back to manual ones. */
 function buildRosters(config: LeagueConfig, espnRosters: Record<number, RosterPlayer[]> | undefined) {
-  const rosters: Record<MemberKey, string[]> = { ...config.manualRosters };
+  const rosters: Record<MemberKey, RosterEntry[]> = Object.fromEntries(
+    Object.entries(config.manualRosters).map(([k, names]) => [k, names.map((name) => ({ name, ir: false }))]),
+  );
   if (!espnRosters) return rosters;
   for (const [teamId, key] of teamToMember(config)) {
     const players = espnRosters[teamId];
-    if (players?.length) rosters[key] = players.map((p) => p.name);
+    if (players?.length) rosters[key] = players.map((p) => ({ name: p.name, ir: !!p.ir }));
   }
   return rosters;
 }

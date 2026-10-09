@@ -16,7 +16,9 @@ export const SEASON_START = Date.UTC(2026, 9, 20);
 export const SEASON_WEEKS = 24;
 export const ESPN_LEAGUE_ID = 1315568920;
 export const ESPN_SEASON = 2027;
-export const ROSTER_SIZE = 14;
+/** Active roster spots per team (10 starters + 3 bench). IR spots are on top of this. */
+export const ROSTER_SIZE = 13;
+export const IR_SLOTS = 3;
 
 const MANAGER_PAIRS: [string, string][] = [
   ["Brian", "Stanley"],

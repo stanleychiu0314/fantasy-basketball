@@ -53,6 +53,8 @@ export type WeekStats = {
   source: "espn" | "manual";
 };
 
+export type RosterEntry = { name: string; ir: boolean };
+
 /** The full picture the public site renders. */
 export type LeagueState = {
   config: LeagueConfig;
@@ -62,7 +64,7 @@ export type LeagueState = {
   /** week -> final? */
   final: Record<number, boolean>;
   /** member -> player names */
-  rosters: Record<MemberKey, string[]>;
+  rosters: Record<MemberKey, RosterEntry[]>;
   /** ESPN teams for the admin mapping dropdown. */
   espnTeams: { id: number; name: string; owner: string }[];
   espnStatus: "ok" | "private" | "error" | "off";
