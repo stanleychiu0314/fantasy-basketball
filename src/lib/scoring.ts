@@ -29,6 +29,7 @@ export type Category = {
 };
 
 export const CATS: Category[] = [
+  { key: "pts", label: "PTS", name: "Points", how: "Total points", low: false, field: "pts" },
   { key: "fg", label: "FG%", name: "Field goal percentage", how: "Total made shots divided by total attempts", low: false, pct: ["fgm", "fga"] },
   { key: "ft", label: "FT%", name: "Free throw percentage", how: "Total made free throws divided by total attempts", low: false, pct: ["ftm", "fta"] },
   { key: "tpm", label: "3PM", name: "Three-pointers made", how: "Total threes made", low: false, field: "tpm" },
@@ -37,7 +38,6 @@ export const CATS: Category[] = [
   { key: "stl", label: "STL", name: "Steals", how: "Total steals", low: false, field: "stl" },
   { key: "blk", label: "BLK", name: "Blocks", how: "Total blocks", low: false, field: "blk" },
   { key: "to", label: "TO", name: "Turnovers", how: "Total turnovers. Fewer is better", low: true, field: "to" },
-  { key: "pts", label: "PTS", name: "Points", how: "Total points", low: false, field: "pts" },
 ];
 
 /** Floating point slack when comparing two percentages for a tie. */
