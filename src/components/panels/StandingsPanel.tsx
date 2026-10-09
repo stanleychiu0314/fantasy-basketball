@@ -2,19 +2,18 @@
 
 import { useLayoutEffect, useMemo, useRef } from "react";
 import type { LeagueState } from "@/types/league";
-import { CATS, computeStandings, duoSubtitle, matchup, pairsFor, type Standings } from "@/lib/scoring";
+import { CATS, computeStandings, duoSubtitle, matchup, type Standings } from "@/lib/scoring";
+import { gamesForWeek, PLAYOFF_SPOTS, weekLabel } from "@/lib/playoffs";
 import { weekRange } from "@/lib/season";
 
 type Props = { state: LeagueState; standings: Standings; onWeek: (w: number) => void };
 
 const LAST_N = 5;
-const MONEY_SPOTS = 3;
 const FLIP_MS = 600;
 
 /** Season table, this week's scoreboard, and the category-wins heat grid. */
 export function StandingsPanel({ state, standings, onWeek }: Props) {
   const { rows, lastPlayed } = standings;
-  const byId = new Map(state.config.duos.map((d) => [d.id, d]));
   const cw = state.currentWeek;
   const ranked = lastPlayed > 0;
 
@@ -54,19 +53,21 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
     <>
       <div>
         <h2 className="h2">Standings</h2>
-        <p className="lede">Ranked by matchup record, then category wins. Top 3 are in the money, 4th to 6th pay up.</p>
+        <p className="lede">
+          Regular season, Weeks 1 to {state.config.regularWeeks}. Ranked by matchup record, then category wins. The top {PLAYOFF_SPOTS} make the playoffs.
+        </p>
       </div>
 
       <div>
-        <p className="eyebrow" style={{ marginBottom: 8 }}>Week {cw} scoreboard · {weekRange(cw)}</p>
+        <p className="eyebrow" style={{ marginBottom: 8 }}>{weekLabel(state, cw) || `Week ${cw}`} scoreboard · {weekRange(cw)}</p>
         <div className="strip">
-          {pairsFor(state, cw).map(([ia, ib]) => {
-            const A = byId.get(ia);
-            const B = byId.get(ib);
+          {gamesForWeek(state, cw).map((g) => {
+            const A = g.a;
+            const B = g.b;
             if (!A || !B) return null;
             const m = matchup(state.scores, cw, A, B);
             return (
-              <button key={`${ia}-${ib}`} className="mini" onClick={() => onWeek(cw)}>
+              <button key={`${A.id}-${B.id}`} className="mini" onClick={() => onWeek(cw)}>
                 <span className={`nm${m.played && m.winsA > m.winsB ? " w" : ""}`}>{A.name}</span>
                 <span className="sc">
                   <span>{m.played ? m.winsA : "–"}</span><i>-</i><span>{m.played ? m.winsB : "–"}</span>
@@ -90,7 +91,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
           const prev = prevRank?.get(r.duo.id);
           const delta = prev === undefined ? 0 : prev - r.rank;
           const sub = duoSubtitle(r.duo);
-          const cls = !ranked ? "" : r.rank === 1 ? " top1" : r.rank > MONEY_SPOTS ? " zone" : "";
+          const cls = (!ranked ? "" : r.rank === 1 ? " top1" : r.rank > PLAYOFF_SPOTS ? " zone" : "") + (r.rank === PLAYOFF_SPOTS ? " cutline" : "");
           return (
             <div key={r.duo.id} className={`row${cls}`} data-id={r.duo.id}>
               <span className="rk">

@@ -145,7 +145,7 @@ export function matchup(scores: LeagueState["scores"], week: number, A: Duo, B: 
 }
 
 /**
- * Season table: matchup record first, then category record, then raw category wins.
+ * Regular-season table: matchup record first, then category record, then raw category wins.
  * Pass maxWeek to see the table as it stood after that week (for rank movement arrows).
  */
 export function computeStandings(state: Pick<LeagueState, "config" | "scores">, maxWeek?: number) {
@@ -159,7 +159,8 @@ export function computeStandings(state: Pick<LeagueState, "config" | "scores">, 
   }
   const byId = new Map(config.duos.map((d) => [d.id, d]));
   let lastPlayed = 0;
-  const limit = Math.min(config.weeks, maxWeek ?? config.weeks);
+  // Only the regular season counts toward the table; playoffs are a bracket.
+  const limit = Math.min(config.regularWeeks, maxWeek ?? config.regularWeeks);
 
   for (let week = 1; week <= limit; week++) {
     for (const [ia, ib] of pairsFor(state, week)) {
@@ -204,15 +205,6 @@ export function formatValue(cat: Category, v: number | null): string {
   if (v === null) return "–";
   if (cat.pct) return v.toFixed(3).replace(/^0/, "");
   return Math.round(v).toLocaleString("en-US");
-}
-
-export function weekHasData(state: Pick<LeagueState, "config" | "scores">, week: number): boolean {
-  const byId = new Map(state.config.duos.map((d) => [d.id, d]));
-  return pairsFor(state, week).some(([a, b]) => {
-    const A = byId.get(a);
-    const B = byId.get(b);
-    return !!A && !!B && matchup(state.scores, week, A, B).played;
-  });
 }
 
 /** Subtitle under a duo name. Empty when the duo is still named after its managers. */

@@ -1,5 +1,6 @@
 import type { LeagueConfig, StatLine } from "@/types/league";
 import { FIELDS } from "@/lib/scoring";
+import { PLAYOFF_WEEKS, SEASON_WEEKS } from "@/lib/season";
 
 const MAX_TEXT = 200;
 const MAX_WEEKS = 30;
@@ -27,7 +28,12 @@ export function cleanConfig(input: LeagueConfig, current: LeagueConfig): LeagueC
   return {
     name: text(input.name, current.name) || current.name,
     buyIn: int(input.buyIn, 0, MAX_BUY_IN, current.buyIn),
-    weeks: int(input.weeks, 1, MAX_WEEKS, current.weeks),
+    // ESPN only has SEASON_WEEKS weeks of games, and the playoffs need the last two of them at most.
+    ...(() => {
+      const regularWeeks = int(input.regularWeeks, 1, SEASON_WEEKS - PLAYOFF_WEEKS, current.regularWeeks);
+      return { regularWeeks, weeks: regularWeeks + PLAYOFF_WEEKS };
+    })(),
+    seed1Pick: typeof input.seed1Pick === "string" && duoIds.has(input.seed1Pick) ? input.seed1Pick : null,
     currentWeekOverride: input.currentWeekOverride === null ? null : int(input.currentWeekOverride, 1, MAX_WEEKS, 1),
     duos: current.duos.map((d) => {
       const next = input.duos?.find((x) => x.id === d.id);

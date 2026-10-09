@@ -1,13 +1,17 @@
+import type { LeagueState } from "@/types/league";
 import { CATS } from "@/lib/scoring";
+import { spanRange, weekRange } from "@/lib/season";
 
 const STEPS = [
   ["1", "Pair up", "12 managers form 6 duos. Each manager keeps their own 13-man ESPN roster, plus up to 3 injured reserve spots. A duo's week is both rosters added together."],
   ["2", "Weekly matchup", "Each week the 6 duos are drawn into 3 head-to-head matchups, duo against duo."],
   ["3", "Win categories", "Compare the combined totals in all 9 categories. Every category is a point, so a matchup ends like 5-3-1."],
-  ["4", "Climb the table", "A matchup win goes in the W column. Standings rank by matchup record, then total category wins."],
+  ["4", "Make the playoffs", "Standings rank by matchup record, then total category wins. The top 4 duos after the regular season go to the playoffs."],
 ];
 
-export function RulesPanel() {
+export function RulesPanel({ state }: { state: LeagueState }) {
+  const { regularWeeks, weeks } = state.config;
+  const semis = regularWeeks + 1;
   return (
     <>
       <div>
@@ -65,6 +69,17 @@ export function RulesPanel() {
             <li><b>Still level:</b> the commissioner flips a coin.</li>
           </ul>
         </div>
+      </div>
+      <div className="card">
+        <p className="eyebrow">Playoffs</p>
+        <ul className="clean">
+          <li><b>Regular season:</b> Weeks 1 to {regularWeeks} ({spanRange(1, regularWeeks)}).</li>
+          <li><b>Who gets in:</b> the top 4 duos in the standings. 5th and 6th are done for the season.</li>
+          <li><b>1st seed&apos;s pick:</b> the 1st seed chooses its semifinal opponent from seeds 2, 3 and 4. The other two play each other.</li>
+          <li><b>Week {semis}, semifinals</b> ({weekRange(semis)}): two duo-vs-duo matchups, same nine categories.</li>
+          <li><b>Week {weeks}, finals</b> ({weekRange(weeks)}): semifinal winners play for 1st, semifinal losers play for 3rd.</li>
+          <li><b>Playoff ties:</b> a tied playoff matchup goes to the higher seed.</li>
+        </ul>
       </div>
       <div className="card">
         <p className="eyebrow">Trades</p>

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LeagueConfig, LeagueState, ScoreEdit, StatLine } from "@/types/league";
 import { FIELDS, FIELD_LABEL, emptyLine, memberKeys, pairsFor } from "@/lib/scoring";
-import { weekRange } from "@/lib/season";
+import { PLAYOFF_WEEKS, SEASON_WEEKS, weekRange } from "@/lib/season";
+import { computeBracket, gamesForWeek, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
 import {
   dismissTradeAlertAction,
   logoutAction,
@@ -47,6 +48,10 @@ export function AdminApp({ state, edits }: Props) {
     patch({ schedule: { ...config.schedule, [String(week)]: next } });
   };
   const usedTwice = new Set(pairs.flat()).size !== pairs.flat().length;
+  // Preview with unsaved settings, so a new pick or season length shows before saving.
+  const draft = { ...state, config };
+  const bracket = computeBracket(draft);
+  const playoffWeek = isPlayoffWeek(draft, week);
   const managerName = (key: string) => {
     const duo = config.duos.find((d) => key.startsWith(d.id));
     return duo ? (key.endsWith("a") ? duo.a : duo.b) : key;
@@ -125,7 +130,25 @@ export function AdminApp({ state, edits }: Props) {
         <div className="fields">
           <label>League name<input type="text" value={config.name} onChange={(e) => patch({ name: e.target.value })} /></label>
           <label>Buy-in per manager ($)<input type="number" min={0} value={config.buyIn} onChange={(e) => patch({ buyIn: Number(e.target.value) })} /></label>
-          <label>Weeks in season<input type="number" min={1} max={30} value={config.weeks} onChange={(e) => patch({ weeks: Number(e.target.value) })} /></label>
+          <label>
+            Regular-season weeks (playoffs add {PLAYOFF_WEEKS})
+            <input
+              type="number" min={1} max={SEASON_WEEKS - PLAYOFF_WEEKS} value={config.regularWeeks}
+              onChange={(e) => {
+                const regularWeeks = Number(e.target.value);
+                patch({ regularWeeks, weeks: regularWeeks + PLAYOFF_WEEKS });
+              }}
+            />
+          </label>
+          <label>
+            1st seed&apos;s semifinal pick
+            <select value={config.seed1Pick ?? ""} onChange={(e) => patch({ seed1Pick: e.target.value || null })}>
+              <option value="">Not picked yet (plays the 4th seed)</option>
+              {bracket.seeds.slice(1).map((d, i) => (
+                <option key={d.id} value={d.id}>{`Seed ${i + 2}: ${d.name}`}</option>
+              ))}
+            </select>
+          </label>
           <label>
             Current week (blank follows ESPN)
             <input
@@ -181,8 +204,11 @@ export function AdminApp({ state, edits }: Props) {
       </section>
 
       <section className="card" style={{ display: "grid", gap: 14 }}>
-        <p className="eyebrow">Week {week} · {weekRange(week)}</p>
-        <WeekChips weeks={config.weeks} current={state.currentWeek} selected={week} final={state.final} onPick={setWeek} />
+        <p className="eyebrow">{playoffWeek ? `${weekLabel(draft, week)} · ` : ""}Week {week} · {weekRange(week)}</p>
+        <WeekChips weeks={config.weeks} regularWeeks={config.regularWeeks} current={state.currentWeek} selected={week} final={state.final} onPick={setWeek} />
+        {playoffWeek ? (
+          <p className="note">Playoff matchups come from the bracket: the seeds and the 1st seed&apos;s pick above.</p>
+        ) : (
         <div className="editm">
           {pairs.map((p, slot) => (
             <div key={slot} className="pr">
@@ -197,7 +223,8 @@ export function AdminApp({ state, edits }: Props) {
             </div>
           ))}
         </div>
-        {usedTwice && <p className="warn">A duo appears twice this week. Each duo should play exactly once.</p>}
+        )}
+        {!playoffWeek && usedTwice && <p className="warn">A duo appears twice this week. Each duo should play exactly once.</p>}
         <label className="switch">
           <input type="checkbox" checked={!!state.final[week]} disabled={pending || !state.hasDatabase}
             onChange={(e) => run(() => setFinalAction(week, e.target.checked))} />
@@ -214,11 +241,13 @@ export function AdminApp({ state, edits }: Props) {
       </div>
 
       <div className="mcs">
-        {pairs.map(([a, b]) => {
-          const A = config.duos.find((d) => d.id === a);
-          const B = config.duos.find((d) => d.id === b);
-          return A && B ? <MatchupCard key={`${a}-${b}`} state={state} week={week} A={A} B={B} /> : null;
-        })}
+        {gamesForWeek(draft, week, bracket).map((g, i) =>
+          g.a && g.b ? (
+            <MatchupCard key={`${g.a.id}-${g.b.id}`} state={state} week={week} A={g.a} B={g.b} label={g.label || undefined} seedA={g.seedA} seedB={g.seedB} />
+          ) : (
+            <p key={i} className="note">{g.label}: teams not set yet.</p>
+          ),
+        )}
       </div>
 
       <section style={{ display: "grid", gap: 12 }}>

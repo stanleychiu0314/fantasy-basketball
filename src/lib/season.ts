@@ -14,6 +14,9 @@ const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "
 
 export const SEASON_START = Date.UTC(2026, 9, 20);
 export const SEASON_WEEKS = 24;
+/** Semifinals, then finals and the 3rd place game. */
+export const PLAYOFF_WEEKS = 2;
+export const DEFAULT_REGULAR_WEEKS = SEASON_WEEKS - PLAYOFF_WEEKS;
 export const ESPN_LEAGUE_ID = 1315568920;
 export const ESPN_SEASON = 2027;
 /** Active roster spots per team (10 starters + 3 bench). IR spots are on top of this. */
@@ -42,7 +45,13 @@ export function weekBounds(week: number): [number, number] {
 
 /** Human date range for a matchup week, e.g. "Oct 26 to Nov 1". */
 export function weekRange(week: number): string {
-  const [start, end] = weekBounds(week);
+  return spanRange(week, week);
+}
+
+/** Human date range from the start of one week to the end of another, e.g. "Oct 20 to Mar 28". */
+export function spanRange(fromWeek: number, toWeek: number): string {
+  const start = weekBounds(fromWeek)[0];
+  const end = weekBounds(toWeek)[1];
   const a = new Date(start);
   const b = new Date(end);
   const sameMonth = a.getUTCMonth() === b.getUTCMonth();
@@ -72,6 +81,8 @@ export function defaultConfig(): LeagueConfig {
     name: "Gooners",
     buyIn: 20,
     weeks: SEASON_WEEKS,
+    regularWeeks: DEFAULT_REGULAR_WEEKS,
+    seed1Pick: null,
     currentWeekOverride: null,
     duos,
     punishments: {
@@ -88,9 +99,14 @@ export function defaultConfig(): LeagueConfig {
 export function normalizeConfig(raw: Partial<LeagueConfig> | null | undefined): LeagueConfig {
   const base = defaultConfig();
   if (!raw) return base;
+  // Configs saved before playoffs existed only have `weeks`; carve the playoffs out of it.
+  const regularWeeks = raw.regularWeeks ?? (raw.weeks ?? SEASON_WEEKS) - PLAYOFF_WEEKS;
   return {
     ...base,
     ...raw,
+    regularWeeks,
+    weeks: regularWeeks + PLAYOFF_WEEKS,
+    seed1Pick: raw.seed1Pick ?? null,
     duos: (raw.duos ?? base.duos).map((d) => ({ ...d, espnA: d.espnA ?? null, espnB: d.espnB ?? null })),
     punishments: { ...base.punishments, ...(raw.punishments ?? {}) },
   };

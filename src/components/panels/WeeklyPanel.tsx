@@ -2,9 +2,10 @@
 
 import { useEffect, useState } from "react";
 import type { Duo, LeagueState, PlayerWeek } from "@/types/league";
-import { memberKeys, pairsFor, weekHasData } from "@/lib/scoring";
+import { memberKeys } from "@/lib/scoring";
+import { gamesForWeek, weekHasData, weekLabel } from "@/lib/playoffs";
 import { weekRange } from "@/lib/season";
-import { MatchupCard } from "../MatchupCard";
+import { MatchupCard, PendingCard } from "../MatchupCard";
 import { WeekChips } from "../WeekChips";
 
 type Props = { state: LeagueState; week: number; onWeek: (w: number) => void };
@@ -12,7 +13,7 @@ type Players = { week: number; rows: PlayerWeek[] } | null;
 
 /** The three duo matchups for one week, plus each duo's player box score. */
 export function WeeklyPanel({ state, week, onWeek }: Props) {
-  const byId = new Map(state.config.duos.map((d) => [d.id, d]));
+  const phase = weekLabel(state, week);
   const status = state.final[week] ? "Final" : weekHasData(state, week) ? "Live" : "Not started";
   const corrected = state.manual.filter((m) => m.week === week).length;
 
@@ -33,22 +34,32 @@ export function WeeklyPanel({ state, week, onWeek }: Props) {
     <>
       <div>
         <h2 className="h2">Weekly matchups</h2>
-        <p className="lede">Pick a week to see its three duo matchups. Numbers come straight from ESPN.</p>
+        <p className="lede">
+          Pick a week to see its matchups. Weeks {state.config.regularWeeks + 1} and {state.config.weeks} are the playoffs. Numbers come straight from ESPN.
+        </p>
       </div>
-      <WeekChips weeks={state.config.weeks} current={state.currentWeek} selected={week} final={state.final} onPick={onWeek} />
+      <WeekChips weeks={state.config.weeks} regularWeeks={state.config.regularWeeks} current={state.currentWeek} selected={week} final={state.final} onPick={onWeek} />
       <div className="wbar">
         <span className="eyebrow">
-          Week {week} · {weekRange(week)}
+          {phase ? `${phase} · ` : ""}Week {week} · {weekRange(week)}
           {week === state.currentWeek ? " · current" : ""} · {status}
           {corrected ? ` · ${corrected} score${corrected > 1 ? "s" : ""} corrected by the commissioner` : ""}
         </span>
       </div>
       <div key={week} className="mcs enter">
-        {pairsFor(state, week).map(([a, b]) => {
-          const A = byId.get(a);
-          const B = byId.get(b);
-          return A && B ? <MatchupCard key={`${a}-${b}`} state={state} week={week} A={A} B={B} /> : null;
-        })}
+        {gamesForWeek(state, week).map((g, i) =>
+          g.a && g.b ? (
+            <MatchupCard key={`${g.a.id}-${g.b.id}`} state={state} week={week} A={g.a} B={g.b} label={g.label || undefined} seedA={g.seedA} seedB={g.seedB} />
+          ) : (
+            <PendingCard
+              key={i}
+              label={g.label}
+              a={g.a?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" ? "To be seeded" : "Semifinal loser")}
+              b={g.b?.name ?? (g.label === "Final" ? "Semifinal winner" : g.label === "Semifinal" ? "To be seeded" : "Semifinal loser")}
+              note={g.label === "Semifinal" ? "Set once the regular season ends." : "Set once the semifinals are final."}
+            />
+          ),
+        )}
       </div>
 
       <div>

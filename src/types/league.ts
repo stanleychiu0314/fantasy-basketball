@@ -34,7 +34,12 @@ export type Punishment = { title: string; text: string; level: 1 | 2 | 3 };
 export type LeagueConfig = {
   name: string;
   buyIn: number;
+  /** Total weeks including playoffs. Always regularWeeks + PLAYOFF_WEEKS. */
   weeks: number;
+  /** Regular-season weeks; playoffs follow. */
+  regularWeeks: number;
+  /** The duo the 1st seed picked as its semifinal opponent. Null until they pick (defaults to the 4th seed). */
+  seed1Pick: string | null;
   /** Null means follow the calendar (or ESPN, when connected). */
   currentWeekOverride: number | null;
   duos: Duo[];

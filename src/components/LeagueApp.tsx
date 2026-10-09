@@ -3,19 +3,22 @@
 import { useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { LeagueState } from "@/types/league";
-import { computeStandings, weekHasData } from "@/lib/scoring";
+import { computeStandings } from "@/lib/scoring";
+import { computeBracket, weekHasData, weekLabel } from "@/lib/playoffs";
 import { weekRange } from "@/lib/season";
 import { RulesPanel } from "./panels/RulesPanel";
 import { StakesPanel } from "./panels/StakesPanel";
 import { StandingsPanel } from "./panels/StandingsPanel";
 import { WeeklyPanel } from "./panels/WeeklyPanel";
 import { RostersPanel } from "./panels/RostersPanel";
+import { PlayoffsPanel } from "./panels/PlayoffsPanel";
 
 const TABS = [
   ["rules", "Rules"],
   ["stakes", "Stakes"],
   ["standings", "Standings"],
   ["weekly", "Weekly"],
+  ["playoffs", "Playoffs"],
   ["rosters", "Rosters"],
 ] as const;
 type TabId = (typeof TABS)[number][0];
@@ -31,6 +34,8 @@ export function LeagueApp({ state }: { state: LeagueState }) {
   const [tab, setTab] = useState<TabId>("standings");
   const [week, setWeek] = useState(state.currentWeek);
   const standings = useMemo(() => computeStandings(state), [state]);
+  const bracket = useMemo(() => computeBracket(state), [state]);
+  const phase = weekLabel(state, state.currentWeek);
   const live = weekHasData(state, state.currentWeek) && !state.final[state.currentWeek];
 
   useEffect(() => {
@@ -83,7 +88,7 @@ export function LeagueApp({ state }: { state: LeagueState }) {
           <div className="pills">
             <span className={`pill${live ? " live" : ""}`}>
               {live && <span className="dot" />}
-              {live ? "Live " : ""}Week {state.currentWeek} of {state.config.weeks} · {weekRange(state.currentWeek)}
+              {live ? "Live " : ""}{phase ? `${phase} · ` : ""}Week {state.currentWeek} of {state.config.weeks} · {weekRange(state.currentWeek)}
             </span>
             <span className="sync" suppressHydrationWarning>
               {state.espnStatus === "ok" && synced
@@ -106,10 +111,11 @@ export function LeagueApp({ state }: { state: LeagueState }) {
         </nav>
 
         <main key={tab} className="panel enter" role="tabpanel">
-          {tab === "rules" && <RulesPanel />}
-          {tab === "stakes" && <StakesPanel state={state} standings={standings} />}
+          {tab === "rules" && <RulesPanel state={state} />}
+          {tab === "stakes" && <StakesPanel state={state} bracket={bracket} />}
           {tab === "standings" && <StandingsPanel state={state} standings={standings} onWeek={goToWeek} />}
           {tab === "weekly" && <WeeklyPanel state={state} week={week} onWeek={setWeek} />}
+          {tab === "playoffs" && <PlayoffsPanel state={state} bracket={bracket} onWeek={goToWeek} />}
           {tab === "rosters" && <RostersPanel state={state} />}
         </main>
         <p className="foot">

@@ -1,8 +1,10 @@
 import type { LeagueState } from "@/types/league";
-import { duoSubtitle, memberKeys, type Standings } from "@/lib/scoring";
+import { duoSubtitle, memberKeys } from "@/lib/scoring";
+import type { Bracket } from "@/lib/playoffs";
+import { weekRange } from "@/lib/season";
 import { CountUp } from "../CountUp";
 
-type Props = { state: LeagueState; standings: Standings };
+type Props = { state: LeagueState; bracket: Bracket };
 
 const ORDINAL = ["", "1st", "2nd", "3rd", "4th", "5th", "6th"];
 const LEVELS = [1, 2, 3];
@@ -13,7 +15,7 @@ const MANAGERS_PER_DUO = 2;
 const money = (n: number) => `${n < 0 ? "-" : ""}$${Math.abs(n)}`;
 
 /** Payouts and punishments, with whoever currently holds each place. */
-export function StakesPanel({ state, standings }: Props) {
+export function StakesPanel({ state, bracket }: Props) {
   const { buyIn, duos, punishments, weeks } = state.config;
   const players = duos.length * 2;
   const pool = players * buyIn;
@@ -36,7 +38,7 @@ export function StakesPanel({ state, standings }: Props) {
       <div>
         <h2 className="h2">What&apos;s on the line</h2>
         <p className="lede">
-          Everyone puts in ${buyIn}. Rankings after Week {weeks} (ends Apr 11) decide who gets paid and who pays for it.
+          Everyone puts in ${buyIn}. The playoffs decide who gets paid and who pays for it: the final settles 1st and 2nd, the 3rd place game settles 3rd and 4th, and the two duos that miss the playoffs finish 5th and 6th by record. Everything is settled after Week {weeks} ({weekRange(weeks)}).
         </p>
       </div>
       <div className="pot">
@@ -60,16 +62,16 @@ export function StakesPanel({ state, standings }: Props) {
       </div>
       <div className="slots">
         {slots.map((s) => {
-          const row = standings.rows[s.n - 1];
-          const sub = row ? duoSubtitle(row.duo) : "";
+          const duo = bracket.placements[s.n - 1];
+          const sub = duo ? duoSubtitle(duo) : "";
           return (
             <div key={s.n} className={`slot s${s.n}`}>
               <span className="pos">{ORDINAL[s.n]}</span>
               <div className="who">
-                {!standings.lastPlayed || !row ? (
+                {!duo ? (
                   <><span style={{ color: "var(--muted)" }}>To be decided</span><small>Fills in after the first week is scored</small></>
                 ) : (
-                  <>{row.duo.name}{sub && <small>{sub}</small>}</>
+                  <>{duo.name}{sub && <small>{sub}</small>}</>
                 )}
               </div>
               <div className={`pay ${s.net > 0 ? "plus" : s.net < 0 ? "minus" : ""}`}>
@@ -91,7 +93,9 @@ export function StakesPanel({ state, standings }: Props) {
         })}
       </div>
       <p className="note">
-        Placement is live. Whoever sits in each spot right now is shown, and it can change every week until the season ends.
+        {bracket.decided
+          ? "Final placement. The season is over."
+          : "Until the playoffs finish, each spot shows the regular-season standings right now. It can change every week."}
       </p>
     </>
   );
