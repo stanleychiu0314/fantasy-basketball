@@ -254,12 +254,10 @@ select{flex:1}
 .wk.po[aria-pressed="true"]{color:var(--accent-ink)}
 .row.cutline{border-bottom:2px dashed color-mix(in srgb,var(--gold) 70%,var(--line))}
 .cut-label{font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold);padding:6px 16px;background:var(--surface)}
-.bracket{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));align-items:start}
-.round{display:grid;gap:10px}
-.round h3{font-size:1.4rem;text-transform:uppercase}
-.round .when{font-size:12px;color:var(--muted);font-weight:600}
-.bgame{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.bgame{display:block;width:100%;text-align:left;padding:0;font:inherit;color:inherit;background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden;transition:border-color .2s,transform .2s}
+button.bgame:hover{border-color:var(--accent);transform:translateY(-1px)}
 .bgame .lbl{padding:8px 14px 0;font-size:11px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:var(--gold)}
+.bgame .lbl .stakes{color:var(--muted);font-weight:700}
 .bside{display:grid;grid-template-columns:auto 1fr auto;gap:10px;align-items:center;padding:10px 14px}
 .bside+.bside{border-top:1px solid var(--line)}
 .bside .nm{font-weight:700}
@@ -268,5 +266,30 @@ select{flex:1}
 .bside.won{background:color-mix(in srgb,var(--accent) 10%,var(--surface))}
 .bside.won .nm{color:var(--accent)}
 .bside.lost .nm{color:var(--muted)}
+.bk-outcome .bside{grid-template-columns:auto 1fr}
+
+/* Bracket grid. Game rows have no row gap and equal padding, so each card's
+   center sits at a fixed fraction of the connector column (1/6, 1/2, 5/6). */
+.bk{display:grid;grid-template-columns:minmax(0,1fr) 72px minmax(0,1fr);row-gap:0}
+.bk-c1{grid-column:1}.bk-c2{grid-column:2}.bk-c3{grid-column:3}
+.bk-r1{grid-row:1}.bk-r2{grid-row:2}.bk-r3{grid-row:3}.bk-r4{grid-row:4}.bk-r5{grid-row:5}.bk-r6{grid-row:6}
+.bk-r2-3{grid-row:2/4}.bk-r2-4{grid-row:2/5}
+.bk-head{display:grid;gap:2px;padding-bottom:6px}
+.bk-head h3{font-size:1.4rem;text-transform:uppercase}
+.bk-head span{font-size:12px;color:var(--muted);font-weight:600}
+.bk-cell{padding-block:7px;min-width:0}
+.bk-mid{align-self:center}
+.bk-sep{grid-column:1/-1;margin-top:22px;padding-bottom:6px;font-family:var(--display);font-weight:800;font-size:1.4rem;text-transform:uppercase}
+.bk-lines{width:100%;height:100%;overflow:visible}
+.bk-lines line{stroke-width:2;fill:none}
+.bk-lines line.win{stroke:var(--gold)}
+.bk-lines line.lose{stroke:var(--muted);stroke-dasharray:5 5}
+.bk-lines text{fill:var(--muted);font-family:var(--body);font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase}
+@media (max-width:640px){
+  .bk{grid-template-columns:1fr}
+  .bk>*{grid-column:1!important;grid-row:auto!important}
+  .bk-lines{display:none}
+  .bk-head{margin-top:14px}
+}
 .champ{display:flex;gap:14px;align-items:center;border:1px solid var(--gold);border-radius:var(--r);padding:16px 18px;background:linear-gradient(90deg,color-mix(in srgb,var(--gold) 16%,var(--surface)),var(--surface))}
 .champ .big{color:var(--gold)}

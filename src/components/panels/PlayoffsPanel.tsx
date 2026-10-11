@@ -5,7 +5,7 @@ import { weekRange } from "@/lib/season";
 
 type Props = { state: LeagueState; bracket: Bracket; onWeek: (w: number) => void };
 
-/** The four-duo bracket: semifinals, then the final and the 3rd place game. */
+/** The playoff bracket: semifinals and the last place game, then the final and the 3rd place game. */
 export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
   const { regularWeeks } = state.config;
   const regularDone = !!state.final[regularWeeks];
@@ -48,21 +48,63 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
         )}
       </div>
 
-      <div className="bracket">
-        <div className="round">
+      {/* Desktop: a two-round bracket drawn on a grid, with SVG connector lines.
+          Phones: the same cards stacked in reading order, lines hidden. */}
+      <div className="bk">
+        <div className="bk-head bk-c1 bk-r1">
           <h3>Semifinals</h3>
-          <span className="when">Week {bracket.semisWeek} · {weekRange(bracket.semisWeek)}</span>
-          {bracket.semis.map((g, i) => (
-            <BracketGame key={i} state={state} week={bracket.semisWeek} game={g} onWeek={onWeek}
-              tbd={i === 0 ? ["1st seed", "1st seed's pick"] : ["Seed", "Seed"]} />
-          ))}
-          <BracketGame state={state} week={bracket.semisWeek} game={bracket.lastPlace} onWeek={onWeek} tbd={["5th seed", "6th seed"]} />
+          <span>Week {bracket.semisWeek} · {weekRange(bracket.semisWeek)}</span>
         </div>
-        <div className="round">
+        <div className="bk-cell bk-c1 bk-r2">
+          <BracketGame state={state} week={bracket.semisWeek} game={bracket.semis[0]} onWeek={onWeek} tbd={["1st seed", "1st seed's pick"]} />
+        </div>
+        <div className="bk-cell bk-c1 bk-r3">
+          <BracketGame state={state} week={bracket.semisWeek} game={bracket.semis[1]} onWeek={onWeek} tbd={["Seed", "Seed"]} />
+        </div>
+
+        <svg className="bk-lines bk-c2 bk-r2-4" aria-hidden="true">
+          {/* Winners: both semis join and run into the Final. */}
+          <line className="win" x1="0" y1="16.667%" x2="50%" y2="16.667%" />
+          <line className="win" x1="0" y1="50%" x2="50%" y2="50%" />
+          <line className="win" x1="50%" y1="16.667%" x2="50%" y2="50%" />
+          <line className="win" x1="50%" y1="33.333%" x2="100%" y2="33.333%" />
+          {/* Losers: drop from the bracket to the 3rd place game. */}
+          <line className="lose" x1="50%" y1="50%" x2="50%" y2="83.333%" />
+          <line className="lose" x1="50%" y1="83.333%" x2="100%" y2="83.333%" />
+          <text x="75%" y="31%" textAnchor="middle">winners</text>
+          <text x="75%" y="81%" textAnchor="middle">losers</text>
+        </svg>
+
+        <div className="bk-head bk-c3 bk-r1">
           <h3>Finals</h3>
-          <span className="when">Week {bracket.finalsWeek} · {weekRange(bracket.finalsWeek)}</span>
-          <BracketGame state={state} week={bracket.finalsWeek} game={bracket.final} onWeek={onWeek} tbd={["Semifinal winner", "Semifinal winner"]} />
-          <BracketGame state={state} week={bracket.finalsWeek} game={bracket.thirdPlace} onWeek={onWeek} tbd={["Semifinal loser", "Semifinal loser"]} />
+          <span>Week {bracket.finalsWeek} · {weekRange(bracket.finalsWeek)}</span>
+        </div>
+        <div className="bk-cell bk-c3 bk-r2-3 bk-mid">
+          <BracketGame state={state} week={bracket.finalsWeek} game={bracket.final} onWeek={onWeek} tbd={["Semifinal winner", "Semifinal winner"]} stakes="for 1st place" />
+        </div>
+        <div className="bk-cell bk-c3 bk-r4">
+          <BracketGame state={state} week={bracket.finalsWeek} game={bracket.thirdPlace} onWeek={onWeek} tbd={["Semifinal loser", "Semifinal loser"]} stakes="for 3rd place" />
+        </div>
+
+        <div className="bk-sep bk-r5">Last place · Week {bracket.semisWeek}</div>
+        <div className="bk-cell bk-c1 bk-r6">
+          <BracketGame state={state} week={bracket.semisWeek} game={bracket.lastPlace} onWeek={onWeek} tbd={["5th seed", "6th seed"]} stakes="for 5th place" />
+        </div>
+        <svg className="bk-lines bk-c2 bk-r6" aria-hidden="true">
+          <line className="lose" x1="0" y1="50%" x2="100%" y2="50%" />
+        </svg>
+        <div className="bk-cell bk-c3 bk-r6 bk-mid">
+          <div className="bgame bk-outcome">
+            <p className="lbl">Result</p>
+            <div className={`bside${bracket.lastPlace.winner ? " won" : ""}`}>
+              <span className="seed">5</span>
+              <span className={`nm${bracket.lastPlace.winner ? "" : " tbd"}`}>{bracket.lastPlace.winner?.name ?? "Winner finishes 5th"}</span>
+            </div>
+            <div className={`bside${bracket.lastPlace.loser ? " lost" : ""}`}>
+              <span className="seed">6</span>
+              <span className={`nm${bracket.lastPlace.loser ? "" : " tbd"}`}>{bracket.lastPlace.loser?.name ?? "Loser finishes last"}</span>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -79,7 +121,19 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
   );
 }
 
-function BracketGame({ state, week, game, tbd, onWeek }: { state: LeagueState; week: number; game: Game; tbd: [string, string]; onWeek: (w: number) => void }) {
+type GameProps = {
+  state: LeagueState;
+  week: number;
+  game: Game;
+  /** Placeholder names while a side is undecided. */
+  tbd: [string, string];
+  /** What the game decides, e.g. "for 1st place". */
+  stakes?: string;
+  onWeek: (w: number) => void;
+};
+
+/** One bracket game: two seeded sides and their category wins. Opens that week's full matchup. */
+function BracketGame({ state, week, game, tbd, stakes, onWeek }: GameProps) {
   const m = game.a && game.b ? matchup(state.scores, week, game.a, game.b) : null;
   const side = (duo: Game["a"], seed: number | undefined, wins: number | undefined, fallback: string) => {
     const cls = game.winner && duo ? (duo === game.winner ? " won" : " lost") : "";
@@ -92,8 +146,12 @@ function BracketGame({ state, week, game, tbd, onWeek }: { state: LeagueState; w
     );
   };
   return (
-    <button className="bgame" style={{ textAlign: "left", padding: 0, font: "inherit", color: "inherit" }} onClick={() => onWeek(week)}>
-      <p className="lbl">{game.label}{m?.played && !game.winner ? " · live" : ""}</p>
+    <button className="bgame" onClick={() => onWeek(week)}>
+      <p className="lbl">
+        {game.label}
+        {stakes ? <span className="stakes"> {stakes}</span> : null}
+        {m?.played && !game.winner ? " · live" : ""}
+      </p>
       {side(game.a, game.seedA, m?.winsA, tbd[0])}
       {side(game.b, game.seedB, m?.winsB, tbd[1])}
     </button>
