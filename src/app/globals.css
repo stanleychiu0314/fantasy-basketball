@@ -270,7 +270,7 @@ button.bgame:hover{border-color:var(--accent);transform:translateY(-1px)}
 
 /* Bracket grid. Game rows have no row gap and equal padding, so each card's
    center sits at a fixed fraction of the connector column (1/6, 1/2, 5/6). */
-.bk{display:grid;grid-template-columns:minmax(0,1fr) 72px minmax(0,1fr);row-gap:0}
+.bk{display:grid;grid-template-columns:minmax(0,1fr) 132px minmax(0,1fr);row-gap:0}
 .bk-c1{grid-column:1}.bk-c2{grid-column:2}.bk-c3{grid-column:3}
 .bk-r1{grid-row:1}.bk-r2{grid-row:2}.bk-r3{grid-row:3}.bk-r4{grid-row:4}.bk-r5{grid-row:5}.bk-r6{grid-row:6}
 .bk-r2-3{grid-row:2/4}.bk-r2-4{grid-row:2/5}

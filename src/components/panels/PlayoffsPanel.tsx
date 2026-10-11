@@ -63,16 +63,17 @@ export function PlayoffsPanel({ state, bracket, onWeek }: Props) {
         </div>
 
         <svg className="bk-lines bk-c2 bk-r2-4" aria-hidden="true">
-          {/* Winners: both semis join and run into the Final. */}
-          <line className="win" x1="0" y1="16.667%" x2="50%" y2="16.667%" />
-          <line className="win" x1="0" y1="50%" x2="50%" y2="50%" />
-          <line className="win" x1="50%" y1="16.667%" x2="50%" y2="50%" />
-          <line className="win" x1="50%" y1="33.333%" x2="100%" y2="33.333%" />
+          {/* Winners: both semis join and run into the Final. The join sits at 35% so the
+              runs into the finals column are long enough to carry their labels. */}
+          <line className="win" x1="0" y1="16.667%" x2="35%" y2="16.667%" />
+          <line className="win" x1="0" y1="50%" x2="35%" y2="50%" />
+          <line className="win" x1="35%" y1="16.667%" x2="35%" y2="50%" />
+          <line className="win" x1="35%" y1="33.333%" x2="100%" y2="33.333%" />
           {/* Losers: drop from the bracket to the 3rd place game. */}
-          <line className="lose" x1="50%" y1="50%" x2="50%" y2="83.333%" />
-          <line className="lose" x1="50%" y1="83.333%" x2="100%" y2="83.333%" />
-          <text x="75%" y="31%" textAnchor="middle">winners</text>
-          <text x="75%" y="81%" textAnchor="middle">losers</text>
+          <line className="lose" x1="35%" y1="50%" x2="35%" y2="83.333%" />
+          <line className="lose" x1="35%" y1="83.333%" x2="100%" y2="83.333%" />
+          <text x="68%" y="33.333%" dy="-7" textAnchor="middle">winners</text>
+          <text x="68%" y="83.333%" dy="-7" textAnchor="middle">losers</text>
         </svg>
 
         <div className="bk-head bk-c3 bk-r1">
