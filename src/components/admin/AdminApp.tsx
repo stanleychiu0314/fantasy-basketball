@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import type { LeagueConfig, LeagueState, ScoreEdit, StatLine } from "@/types/league";
 import { FIELDS, FIELD_LABEL, emptyLine, memberKeys, pairsFor } from "@/lib/scoring";
-import { PLAYOFF_WEEKS, SEASON_WEEKS, weekRange } from "@/lib/season";
+import { PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS, weekRange } from "@/lib/season";
 import { computeBracket, gamesForWeek, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
 import {
   dismissTradeAlertAction,
@@ -190,15 +190,26 @@ export function AdminApp({ state, edits }: Props) {
       </section>
 
       <section className="card">
-        <p className="eyebrow" style={{ marginBottom: 10 }}>Punishments, 4th to 6th place</p>
-        <div className="pued">
-          {(["4", "5", "6"] as const).map((k) => (
-            <div key={k} className="pr2">
-              <input type="text" value={config.punishments[k].title} aria-label={`${k}th place title`}
-                onChange={(e) => patch({ punishments: { ...config.punishments, [k]: { ...config.punishments[k], title: e.target.value } } })} />
-              <input type="text" value={config.punishments[k].text} aria-label={`${k}th place punishment`}
-                onChange={(e) => patch({ punishments: { ...config.punishments, [k]: { ...config.punishments[k], text: e.target.value } } })} />
-            </div>
+        <p className="eyebrow" style={{ marginBottom: 10 }}>Punishment picks (4th picks first, then 5th, then 6th)</p>
+        <div className="fields">
+          {PUNISHED_PLACES.map((place) => (
+            <label key={place}>
+              {place}th place picked
+              <select
+                value={config.punishmentPicks[place] ?? ""}
+                onChange={(e) => patch({ punishmentPicks: { ...config.punishmentPicks, [place]: e.target.value || null } })}
+              >
+                <option value="">Not picked yet</option>
+                {PUNISHMENTS.map((p) => {
+                  const takenBy = PUNISHED_PLACES.find((other) => other !== place && config.punishmentPicks[other] === p.id);
+                  return (
+                    <option key={p.id} value={p.id} disabled={!!takenBy}>
+                      {p.title}{takenBy ? ` (taken by ${takenBy}th)` : ""}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
           ))}
         </div>
       </section>

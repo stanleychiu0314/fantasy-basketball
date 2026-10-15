@@ -1,4 +1,4 @@
-import type { LeagueConfig, Duo } from "@/types/league";
+import type { LeagueConfig, Duo, Punishment } from "@/types/league";
 
 const MS_PER_DAY = 86_400_000;
 const DAYS_PER_WEEK = 7;
@@ -66,6 +66,23 @@ export function weekFromDate(now = Date.now(), weeks = SEASON_WEEKS): number {
   return weeks;
 }
 
+/** Places that owe a punishment, in picking order: 4th picks first, then 5th, then 6th. */
+export const PUNISHED_PLACES = ["4", "5", "6"] as const;
+
+/**
+ * The punishment pool. Each losing duo picks one, in PUNISHED_PLACES order, and both
+ * managers in the duo do it. Unpicked ones go unused.
+ */
+export const PUNISHMENTS: Punishment[] = [
+  { id: "beer-mile", title: "Beer mile", text: "Four beers, four laps, recorded or livestreamed." },
+  { id: "one-chip", title: "One chip", text: "Eat one extremely hot chip on camera." },
+  { id: "kissing-cam", title: "Real / fake AI kissing cam", text: "Make one real and one AI-generated video of the duo kissing, and post both in the group chat." },
+  { id: "victory-royale", title: "Victory Royale", text: "Post a picture of the winning duo in the group chat every day for a week." },
+  { id: "food-review", title: "Food review", text: "One food-critic review a day for a week, of anything you eat." },
+  { id: "aegyo-allan", title: "Aegyo Allan", text: "Recreate the aegyo Allan video." },
+  { id: "puzzle", title: "Puzzle time lapse", text: "Finish a puzzle on a time lapse. The non-losers choose the puzzle." },
+];
+
 /** Starting config before the commissioner edits anything. */
 export function defaultConfig(): LeagueConfig {
   const duos: Duo[] = MANAGER_PAIRS.map(([a, b], i) => ({
@@ -76,7 +93,6 @@ export function defaultConfig(): LeagueConfig {
     espnA: null,
     espnB: null,
   }));
-  const tbd = "The commissioner adds this in admin.";
   return {
     name: "Gooners",
     buyIn: 20,
@@ -85,11 +101,7 @@ export function defaultConfig(): LeagueConfig {
     seed1Pick: null,
     currentWeekOverride: null,
     duos,
-    punishments: {
-      "4": { title: "Punishment to be announced", text: tbd, level: 1 },
-      "5": { title: "Punishment to be announced", text: tbd, level: 2 },
-      "6": { title: "Punishment to be announced", text: tbd, level: 3 },
-    },
+    punishmentPicks: { "4": null, "5": null, "6": null },
     schedule: {},
     manualRosters: {},
   };
@@ -108,6 +120,6 @@ export function normalizeConfig(raw: Partial<LeagueConfig> | null | undefined): 
     weeks: regularWeeks + PLAYOFF_WEEKS,
     seed1Pick: raw.seed1Pick ?? null,
     duos: (raw.duos ?? base.duos).map((d) => ({ ...d, espnA: d.espnA ?? null, espnB: d.espnB ?? null })),
-    punishments: { ...base.punishments, ...(raw.punishments ?? {}) },
+    punishmentPicks: { ...base.punishmentPicks, ...(raw.punishmentPicks ?? {}) },
   };
 }

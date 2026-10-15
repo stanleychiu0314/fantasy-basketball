@@ -106,9 +106,6 @@ ul.clean b{color:var(--fg)}
 .pay .big{font-size:2rem}
 .pay.plus .big{color:var(--win)} .pay.minus .big{color:var(--loss)}
 .pay small{display:block;color:var(--muted);font-size:12px}
-.pips{display:inline-flex;gap:4px;vertical-align:middle;margin-left:8px}
-.pips i{width:16px;height:6px;border-radius:3px;background:var(--line)}
-.pips i.on{background:var(--accent)}
 @media (max-width:560px){.slot{grid-template-columns:auto 1fr}.pay{grid-column:2;text-align:left}.slot .what{grid-column:1/-1}}
 
 /* live strip */
@@ -208,10 +205,8 @@ select{flex:1}
 .fields input{width:100%;color:var(--fg)}
 .duoed{display:grid;gap:10px}
 .duoed .dr{display:grid;gap:8px;grid-template-columns:1.2fr 1fr 1fr}
-.pued{display:grid;gap:10px}
-.pued .pr2{display:grid;gap:8px;grid-template-columns:minmax(110px,.6fr) 3fr}
-@media (max-width:620px){.duoed .dr{grid-template-columns:1fr}.pued .pr2{grid-template-columns:1fr}}
-.duoed input,.pued input{width:100%}
+@media (max-width:620px){.duoed .dr{grid-template-columns:1fr}}
+.duoed input{width:100%}
 .rost{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:14px}
 .team h5{margin:0 0 8px;font-size:15px;display:flex;justify-content:space-between;gap:8px;align-items:baseline}
 .team h5 span{font-size:12px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}

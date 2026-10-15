@@ -1,6 +1,6 @@
 import type { LeagueConfig, StatLine } from "@/types/league";
 import { FIELDS } from "@/lib/scoring";
-import { PLAYOFF_WEEKS, SEASON_WEEKS } from "@/lib/season";
+import { PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS } from "@/lib/season";
 
 const MAX_TEXT = 200;
 const MAX_WEEKS = 30;
@@ -40,17 +40,7 @@ export function cleanConfig(input: LeagueConfig, current: LeagueConfig): LeagueC
       if (!next) return d;
       return { id: d.id, name: text(next.name, d.name), a: text(next.a, d.a), b: text(next.b, d.b), espnA: teamId(next.espnA), espnB: teamId(next.espnB) };
     }),
-    punishments: (["4", "5", "6"] as const).reduce(
-      (acc, k) => ({
-        ...acc,
-        [k]: {
-          title: text(input.punishments?.[k]?.title, current.punishments[k].title),
-          text: text(input.punishments?.[k]?.text, current.punishments[k].text),
-          level: current.punishments[k].level,
-        },
-      }),
-      {} as LeagueConfig["punishments"],
-    ),
+    punishmentPicks: cleanPicks(input.punishmentPicks),
     schedule,
     manualRosters: current.manualRosters,
   };
@@ -58,4 +48,18 @@ export function cleanConfig(input: LeagueConfig, current: LeagueConfig): LeagueC
 
 export function cleanStats(input: StatLine): StatLine {
   return FIELDS.reduce((acc, f) => ({ ...acc, [f]: int(input?.[f], 0, MAX_STAT, 0) }), {} as StatLine);
+}
+
+/** Keep only real punishment ids, each used by at most one place (earlier picks win). */
+function cleanPicks(input: Partial<LeagueConfig["punishmentPicks"]> | undefined): LeagueConfig["punishmentPicks"] {
+  const valid = new Set(PUNISHMENTS.map((p) => p.id));
+  const taken = new Set<string>();
+  const out = { "4": null, "5": null, "6": null } as LeagueConfig["punishmentPicks"];
+  for (const place of PUNISHED_PLACES) {
+    const id = input?.[place];
+    if (typeof id !== "string" || !valid.has(id) || taken.has(id)) continue;
+    taken.add(id);
+    out[place] = id;
+  }
+  return out;
 }

@@ -28,7 +28,10 @@ export type Duo = {
   espnB: number | null;
 };
 
-export type Punishment = { title: string; text: string; level: 1 | 2 | 3 };
+export type Punishment = { id: string; title: string; text: string };
+
+/** The places that owe a punishment, in the order they pick from the pool. */
+export type PunishedPlace = "4" | "5" | "6";
 
 /** Everything the commissioner edits by hand. Stored as one JSON row. */
 export type LeagueConfig = {
@@ -43,7 +46,8 @@ export type LeagueConfig = {
   /** Null means follow the calendar (or ESPN, when connected). */
   currentWeekOverride: number | null;
   duos: Duo[];
-  punishments: Record<"4" | "5" | "6", Punishment>;
+  /** Which punishment (by id) each place picked from the pool. Null until they pick. */
+  punishmentPicks: Record<PunishedPlace, string | null>;
   /** Week number to three [duoId, duoId] pairs. Missing weeks use the round robin. */
   schedule: Record<string, [string, string][]>;
   /** Manual rosters by member key, used when ESPN rosters are unavailable. */
