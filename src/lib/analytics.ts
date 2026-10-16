@@ -10,16 +10,40 @@ import { CATS, FIELDS, catValue, emptyLine, type Category } from "@/lib/scoring"
 export const PRIOR_GAMES = 15;
 /** Lineup spots that score each day (10 starters). Bench and IR do not count. */
 const STARTERS = 10;
-/** Average NBA games per player per week. Scales per-game numbers to a matchup week. */
+/** Average NBA games per player per week, for the season-long view. */
 export const GAMES_PER_WEEK = 3.5;
 /** Players used to set the z-score baseline: roughly every rostered player in a 12-team league. */
 const POOL_SIZE = 156;
 /** Category win chance at or above this is a strength, at or below 1 minus it a weakness. */
 const STRONG = 0.6;
+const CATS_TO_WIN = 5;
+
+// Trade search
 /** A trade the other duo would lose more than this many expected categories on is unrealistic. */
 const FAIR_TOLERANCE = 0.05;
-const MAX_TRADE_IDEAS = 10;
-const CATS_TO_WIN = 5;
+/** Ranking leans toward trades both sides like: a lopsided gain counts this much less. */
+const LOPSIDED_PENALTY = 0.5;
+/** Gains smaller than this are noise. */
+const MIN_GAIN = 0.03;
+const MAX_TRADE_IDEAS = 8;
+const MAX_IDEAS_PER_PARTNER = 2;
+const MAX_SIDE = 3;
+/** Trade value of a draft pick: pick 1 is 100, and each later pick is worth 3% less. */
+const PICK_DECAY = 0.97;
+const PICK_VALUE_TOP = 100;
+/** Rank given to players nobody drafted. */
+const UNDRAFTED_RANK = 170;
+/** In a package, the 2nd and 3rd best players count for less: two dimes are not a quarter. */
+const PACKAGE_WEIGHTS = [1, 0.7, 0.5];
+/** Two sides are balanced when their trade values are within this share of each other. */
+const BALANCE_SHARE = 0.1;
+const BALANCE_MIN_SLACK = 3;
+
+// Pickups
+const MAX_PICKUPS = 8;
+/** Each manager's lowest-value players considered as drops for a pickup. */
+const DROP_CANDIDATES = 3;
+const TARGETS_PER_CAT = 3;
 
 export type PlayerInput = {
   playerId: number;
@@ -27,6 +51,16 @@ export type PlayerInput = {
   /** One season line per projection source (ESPN today, more later). */
   projections: SeasonLine[];
   actual: SeasonLine | null;
+};
+
+/** Facts about a player that are not stats. */
+export type PlayerMeta = {
+  proTeamId: number;
+  injuryStatus: string;
+  /** ESPN fantasy team that rosters him; null = free agent. */
+  onTeamId: number | null;
+  draftPick: number | null;
+  adp: number | null;
 };
 
 export type RatedPlayer = {
@@ -51,7 +85,7 @@ export function blendPerGame(p: PlayerInput): StatLine | null {
       out[f] = actual![f] / actual!.gp;
       continue;
     }
-    const projected = usable.reduce((sum, s) => sum + s[f] / s.gp, 0) / usable.length;
+    const projected = usable.reduce((s, line) => s + line[f] / line.gp, 0) / usable.length;
     // Shrink toward the projection: PRIOR_GAMES of projected play plus every real game.
     out[f] = actual ? (projected * PRIOR_GAMES + actual[f]) / (PRIOR_GAMES + actual.gp) : projected;
   }
@@ -115,22 +149,6 @@ export function normCdf(x: number): number {
   return x > 0 ? 1 - p : p;
 }
 
-/** A manager's scoring lineup: his best STARTERS healthy players by value. */
-export function starters(roster: RosterPlayer[], rated: Map<number, RatedPlayer>): RatedPlayer[] {
-  return roster
-    .filter((p) => !p.ir)
-    .flatMap((p) => rated.get(p.id) ?? [])
-    .sort((a, b) => b.value - a.value)
-    .slice(0, STARTERS);
-}
-
-/** Projected weekly totals for a lineup. */
-export function weeklyTotals(lineup: RatedPlayer[]): StatLine {
-  const out = emptyLine();
-  for (const p of lineup) for (const f of FIELDS) out[f] += p.perGame[f] * GAMES_PER_WEEK;
-  return out;
-}
-
 /**
  * Chance duo A beats duo B in one category over a week. Counting stats are treated
  * as Poisson (variance = mean); percentages as binomial on the week's attempts.
@@ -167,33 +185,72 @@ export function matchupWinChance(chances: number[]): number {
 
 export type TeamRosters = Record<number, RosterPlayer[]>;
 
-type DuoTotals = Map<string, StatLine>;
+/** How many games each player is expected to play in a window, and the lineup's game cap. */
+export type GameWindow = { gamesOf: (playerId: number) => number; cap: number };
 
-/** Weekly totals for every duo: both managers' starters added together. */
-function allDuoTotals(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>): DuoTotals {
-  return new Map(
-    duos.map((d) => {
-      const both = [d.espnA, d.espnB].flatMap((team) => (team === null ? [] : starters(rosters[team] ?? [], rated)));
-      return [d.id, weeklyTotals(both)];
-    }),
-  );
+/** The season-long view: every player plays an average week. */
+export const AVERAGE_WEEK: GameWindow = { gamesOf: () => GAMES_PER_WEEK, cap: STARTERS * GAMES_PER_WEEK };
+
+/** Lineup cap for a stretch of days: 10 starters a day. */
+export const lineupCap = (days: number) => STARTERS * days;
+
+/**
+ * Which of a manager's players fill his lineup in a window, and for how many games.
+ * Best players go in first until the lineup's games run out, the way 10 daily
+ * spots get filled. Injured reserve never plays.
+ */
+function fillLineup(roster: RosterPlayer[], rated: Map<number, RatedPlayer>, window: GameWindow) {
+  let left = window.cap;
+  const ranked = roster
+    .filter((p) => !p.ir)
+    .flatMap((p) => rated.get(p.id) ?? [])
+    .sort((a, b) => b.value - a.value);
+  return ranked.flatMap((p) => {
+    const games = Math.min(window.gamesOf(p.playerId), left);
+    left -= games;
+    return games > 0 ? [{ p, games }] : [];
+  });
 }
 
-/** Average expected categories a duo wins per week across its 5 possible opponents. */
-function expectedCats(duoId: string, totals: DuoTotals): number {
-  const mine = totals.get(duoId)!;
-  const opponents = [...totals.keys()].filter((id) => id !== duoId);
-  const sum = opponents.reduce((s, id) => s + CATS.reduce((c, cat) => c + catWinChance(mine, totals.get(id)!, cat), 0), 0);
-  return sum / (opponents.length || 1);
+const addLines = (a: StatLine, b: StatLine): StatLine => {
+  const out = emptyLine();
+  for (const f of FIELDS) out[f] = a[f] + b[f];
+  return out;
+};
+
+/** A manager's projected totals and games used in a window. */
+export function lineupTotals(roster: RosterPlayer[], rated: Map<number, RatedPlayer>, window: GameWindow): StatLine & { games: number } {
+  const out = { ...emptyLine(), games: 0 };
+  for (const { p, games } of fillLineup(roster, rated, window)) {
+    out.games += games;
+    for (const f of FIELDS) out[f] += p.perGame[f] * games;
+  }
+  return out;
 }
 
-/** Average win chance per category across the 5 opponents. */
-function catChances(duoId: string, totals: DuoTotals): Record<string, number> {
+/** Both managers' totals added together. */
+export function duoTotals(duo: Duo, rosters: TeamRosters, rated: Map<number, RatedPlayer>, window: GameWindow): StatLine & { games: number } {
+  const out = { ...emptyLine(), games: 0 };
+  for (const team of [duo.espnA, duo.espnB]) {
+    if (team === null) continue;
+    const t = lineupTotals(rosters[team] ?? [], rated, window);
+    out.games += t.games;
+    for (const f of FIELDS) out[f] += t[f];
+  }
+  return out;
+}
+
+const chancesVs = (mine: StatLine, theirs: StatLine) => CATS.map((cat) => catWinChance(mine, theirs, cat));
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
+
+const allSeasonTotals = (duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>) =>
+  new Map<string, StatLine>(duos.map((d) => [d.id, duoTotals(d, rosters, rated, AVERAGE_WEEK)]));
+
+/** Average expected categories a duo wins in an average week across its possible opponents. */
+function seasonExpectedCats(duoId: string, totals: Map<string, StatLine>): number {
   const mine = totals.get(duoId)!;
-  const opponents = [...totals.keys()].filter((id) => id !== duoId);
-  return Object.fromEntries(
-    CATS.map((cat) => [cat.key, opponents.reduce((s, id) => s + catWinChance(mine, totals.get(id)!, cat), 0) / (opponents.length || 1)]),
-  );
+  const others = [...totals.entries()].filter(([id]) => id !== duoId);
+  return sum(others.map(([, t]) => sum(chancesVs(mine, t)))) / (others.length || 1);
 }
 
 export type CategoryReport = {
@@ -204,115 +261,244 @@ export type CategoryReport = {
   verdict: "strength" | "weakness" | "even";
 };
 
-export type MatchupOutlook = { duo: Duo; expectedCats: number; winChance: number; byCat: Record<string, number> };
+export type MatchupOutlook = { duo: Duo; expectedCats: number; winChance: number };
+
+export type SeasonReport = { expectedCats: number; categories: CategoryReport[]; outlook: MatchupOutlook[] };
+
+/** Season-long strengths and weaknesses, and an average-week matchup against every other duo. */
+export function seasonReport(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, me: Duo): SeasonReport {
+  const totals = allSeasonTotals(duos, rosters, rated);
+  const mine = totals.get(me.id)!;
+  const opponents = duos.filter((d) => d.id !== me.id);
+  const vs = opponents.map((d) => chancesVs(mine, totals.get(d.id)!));
+  const categories: CategoryReport[] = CATS.map((cat, i) => {
+    const value = catValue(mine, cat) ?? 0;
+    const better = duos.filter((d) => {
+      const v = catValue(totals.get(d.id)!, cat) ?? 0;
+      return cat.low ? v < value : v > value;
+    }).length;
+    const w = sum(vs.map((c) => c[i])) / (vs.length || 1);
+    return { cat, weekly: catValue(mine, cat), rank: better + 1, winChance: w, verdict: w >= STRONG ? "strength" : w <= 1 - STRONG ? "weakness" : "even" };
+  });
+  const outlook = opponents.map((d, i) => ({ duo: d, expectedCats: sum(vs[i]), winChance: matchupWinChance(vs[i]) }));
+  return { expectedCats: seasonExpectedCats(me.id, totals), categories, outlook };
+}
+
+export type CatLine = { cat: Category; mine: number | null; theirs: number | null; winChance: number };
+
+export type Pickup = {
+  add: RatedPlayer;
+  addGames: number;
+  drop: RatedPlayer;
+  dropFrom: string;
+  /** Change in expected categories won this week against this week's opponent. */
+  weekGain: number;
+  /** Change in expected categories in an average week: the rest-of-season effect. */
+  seasonGain: number;
+};
+
+export type CategoryTarget = { cat: Category; winChance: number; players: { player: RatedPlayer; games: number }[] };
+
+export type WeekReport = {
+  opponent: Duo;
+  cats: CatLine[];
+  myGames: number;
+  theirGames: number;
+  expectedCats: number;
+  winChance: number;
+  pickups: Pickup[];
+  targets: CategoryTarget[];
+};
+
+/**
+ * One week's matchup against that week's opponent: stats already played plus a
+ * projection for the games left, then the free agents that help most this week.
+ */
+export function weekReport(args: {
+  duos: Duo[];
+  rosters: TeamRosters;
+  rated: Map<number, RatedPlayer>;
+  me: Duo;
+  opponent: Duo;
+  window: GameWindow;
+  /** Stats already in the books this week, per side (zeros before the week starts). */
+  playedMine: StatLine;
+  playedTheirs: StatLine;
+  freeAgents: number[];
+}): WeekReport {
+  const { duos, rosters, rated, me, opponent, window, playedMine, playedTheirs, freeAgents } = args;
+  const projMine = duoTotals(me, rosters, rated, window);
+  const projTheirs = duoTotals(opponent, rosters, rated, window);
+  const mine = addLines(playedMine, projMine);
+  const theirs = addLines(playedTheirs, projTheirs);
+  const chances = chancesVs(mine, theirs);
+
+  // Pickups: each free agent in place of each manager's weakest few players; keep his best swap.
+  const seasonBefore = seasonExpectedCats(me.id, allSeasonTotals(duos, rosters, rated));
+  const weekBefore = sum(chances);
+  const drops = [me.espnA, me.espnB].flatMap((team) => {
+    if (team === null) return [];
+    const manager = team === me.espnA ? me.a : me.b;
+    return (rosters[team] ?? [])
+      .filter((p) => !p.ir && rated.has(p.id))
+      .sort((a, b) => rated.get(a.id)!.value - rated.get(b.id)!.value)
+      .slice(0, DROP_CANDIDATES)
+      .map((p) => ({ team, manager, player: p }));
+  });
+  const pickups: Pickup[] = [];
+  for (const id of freeAgents) {
+    const add = rated.get(id);
+    if (!add) continue;
+    let best: { d: (typeof drops)[number]; weekGain: number; swapped: TeamRosters } | null = null;
+    for (const d of drops) {
+      const swapped = { ...rosters, [d.team]: rosters[d.team].map((p) => (p.id === d.player.id ? { id, name: add.name } : p)) };
+      const weekGain = sum(chancesVs(addLines(playedMine, duoTotals(me, swapped, rated, window)), theirs)) - weekBefore;
+      if (!best || weekGain > best.weekGain) best = { d, weekGain, swapped };
+    }
+    if (!best || best.weekGain <= 0) continue;
+    pickups.push({
+      add, addGames: window.gamesOf(id), drop: rated.get(best.d.player.id)!, dropFrom: best.d.manager, weekGain: best.weekGain,
+      seasonGain: seasonExpectedCats(me.id, allSeasonTotals(duos, best.swapped, rated)) - seasonBefore,
+    });
+  }
+  pickups.sort((x, y) => y.weekGain - x.weekGain || y.seasonGain - x.seasonGain);
+
+  // Categories I am more likely to lose than win: free agents who add the most of it this week.
+  const targets = CATS.flatMap((cat, i) => {
+    if (chances[i] >= 0.5) return [];
+    const players = freeAgents
+      .flatMap((id) => rated.get(id) ?? [])
+      .map((player) => ({ player, games: window.gamesOf(player.playerId) }))
+      .filter((x) => x.games > 0)
+      .sort((a, b) => b.player.z[cat.key] * b.games - a.player.z[cat.key] * a.games)
+      .slice(0, TARGETS_PER_CAT);
+    return [{ cat, winChance: chances[i], players }];
+  });
+
+  return {
+    opponent,
+    cats: CATS.map((cat, i) => ({ cat, mine: catValue(mine, cat), theirs: catValue(theirs, cat), winChance: chances[i] })),
+    myGames: projMine.games,
+    theirGames: projTheirs.games,
+    expectedCats: sum(chances),
+    winChance: matchupWinChance(chances),
+    pickups: pickups.slice(0, MAX_PICKUPS),
+    targets,
+  };
+}
+
+/** What a player would fetch in a trade, from where he went in this league's draft. */
+export function tradeValue(meta: PlayerMeta | undefined): number {
+  const rank = meta?.draftPick ?? meta?.adp ?? UNDRAFTED_RANK;
+  return PICK_VALUE_TOP * PICK_DECAY ** (rank - 1);
+}
+
+/** A package's value: best player at full weight, the rest discounted. */
+export function packageValue(values: number[]): number {
+  return [...values].sort((a, b) => b - a).reduce((s, v, i) => s + v * (PACKAGE_WEIGHTS[i] ?? 0), 0);
+}
+
+const balanced = (a: number, b: number) => Math.abs(a - b) <= Math.max(BALANCE_MIN_SLACK, BALANCE_SHARE * Math.max(a, b));
+
+/** Every group of 1 to MAX_SIDE items. */
+function packages<T>(items: T[]): T[][] {
+  const out: T[][] = [];
+  const walk = (start: number, picked: T[]) => {
+    if (picked.length) out.push(picked);
+    if (picked.length === MAX_SIDE) return;
+    for (let i = start; i < items.length; i++) walk(i + 1, [...picked, items[i]]);
+  };
+  walk(0, []);
+  return out;
+}
 
 export type TradeIdea = {
-  give: RatedPlayer;
+  give: RatedPlayer[];
   giveFrom: string;
-  get: RatedPlayer;
+  get: RatedPlayer[];
   getFrom: string;
   partnerDuo: Duo;
   myGain: number;
   theirGain: number;
-  /** Categories this trade moves the most for my duo, as win-chance changes. */
-  catShift: { key: string; label: string; change: number }[];
+  giveValue: number;
+  getValue: number;
+  /** Positive: I receive more players than I send and must drop that many. */
+  rosterChange: number;
 };
-
-export type Report = {
-  duo: Duo;
-  categories: CategoryReport[];
-  outlook: MatchupOutlook[];
-  roster: { player: RatedPlayer; manager: string; starter: boolean; ir: boolean }[];
-  trades: TradeIdea[];
-  expectedCats: number;
-};
-
-/** Every analytic on the admin page, for one duo. */
-export function buildReport(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, duoId: string): Report {
-  const duo = duos.find((d) => d.id === duoId)!;
-  const totals = allDuoTotals(duos, rosters, rated);
-  const mine = totals.get(duoId)!;
-  const chances = catChances(duoId, totals);
-
-  const categories: CategoryReport[] = CATS.map((cat) => {
-    const values = duos.map((d) => catValue(totals.get(d.id)!, cat) ?? 0);
-    const value = catValue(mine, cat);
-    const better = values.filter((v) => (cat.low ? v < (value ?? 0) : v > (value ?? 0))).length;
-    const w = chances[cat.key];
-    return { cat, weekly: value, rank: better + 1, winChance: w, verdict: w >= STRONG ? "strength" : w <= 1 - STRONG ? "weakness" : "even" };
-  });
-
-  const outlook = duos
-    .filter((d) => d.id !== duoId)
-    .map((d) => {
-      const byCat = Object.fromEntries(CATS.map((cat) => [cat.key, catWinChance(mine, totals.get(d.id)!, cat)]));
-      const list = Object.values(byCat);
-      return { duo: d, expectedCats: list.reduce((a, b) => a + b, 0), winChance: matchupWinChance(list), byCat };
-    });
-
-  const roster = (["a", "b"] as const).flatMap((side) => {
-    const team = side === "a" ? duo.espnA : duo.espnB;
-    if (team === null) return [];
-    const lineup = new Set(starters(rosters[team] ?? [], rated).map((p) => p.playerId));
-    return (rosters[team] ?? []).flatMap((p) => {
-      const player = rated.get(p.id);
-      return player ? [{ player, manager: duo[side], starter: lineup.has(p.id), ir: !!p.ir }] : [];
-    });
-  });
-
-  return { duo, categories, outlook, roster, trades: tradeIdeas(duos, rosters, rated, duo, totals), expectedCats: expectedCats(duoId, totals) };
-}
 
 /**
- * Every 1-for-1 swap between one of my duo's players and a player on another duo.
- * A swap counts as an idea when it raises my expected categories and the other duo
- * would plausibly say yes (they gain, or lose at most FAIR_TOLERANCE expected categories).
+ * Trades of 1 to 3 players a side (at most one extra player, never 3-for-3) with a
+ * manager on another duo. A trade is listed only when both packages are worth about
+ * the same by this league's draft, my duo gains, and theirs gains or barely loses.
+ * Ideas where both duos gain about equally rank first, since those get accepted.
  * Trades with my own partner are never suggested; the league bans them.
  */
-export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, duo: Duo, totals: DuoTotals): TradeIdea[] {
-  const managerOf = new Map<number, { duo: Duo; name: string }>();
+export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, meta: Map<number, PlayerMeta>, me: Duo): TradeIdea[] {
+  const owner = new Map<number, { duo: Duo; name: string }>();
   for (const d of duos) {
-    if (d.espnA !== null) managerOf.set(d.espnA, { duo: d, name: d.a });
-    if (d.espnB !== null) managerOf.set(d.espnB, { duo: d, name: d.b });
+    if (d.espnA !== null) owner.set(d.espnA, { duo: d, name: d.a });
+    if (d.espnB !== null) owner.set(d.espnB, { duo: d, name: d.b });
   }
-  const myTeams = [duo.espnA, duo.espnB].filter((t): t is number => t !== null);
-  const otherTeams = [...managerOf.keys()].filter((t) => !myTeams.includes(t));
-  const myBefore = expectedCats(duo.id, totals);
-  const myChancesBefore = catChances(duo.id, totals);
-  const ideas: TradeIdea[] = [];
+  const myTeams = [me.espnA, me.espnB].filter((t): t is number => t !== null);
+  const totals = allSeasonTotals(duos, rosters, rated);
+  const myBefore = seasonExpectedCats(me.id, totals);
+  const tradeable = (team: number) =>
+    packages((rosters[team] ?? []).filter((p) => !p.ir && rated.has(p.id))).map((ps) => ({
+      players: ps,
+      value: packageValue(ps.map((p) => tradeValue(meta.get(p.id)))),
+    }));
 
+  const ideas: TradeIdea[] = [];
   for (const myTeam of myTeams) {
-    for (const theirTeam of otherTeams) {
-      const partner = managerOf.get(theirTeam)!.duo;
-      const theirBefore = expectedCats(partner.id, totals);
-      for (const give of rosters[myTeam] ?? []) {
-        for (const get of rosters[theirTeam] ?? []) {
-          if (give.ir || get.ir || !rated.has(give.id) || !rated.has(get.id)) continue;
+    const mine = tradeable(myTeam);
+    for (const theirTeam of [...owner.keys()].filter((t) => !myTeams.includes(t))) {
+      const partner = owner.get(theirTeam)!.duo;
+      const theirBefore = seasonExpectedCats(partner.id, totals);
+      const theirs = tradeable(theirTeam);
+      for (const g of mine) {
+        for (const t of theirs) {
+          const [ng, nt] = [g.players.length, t.players.length];
+          if (Math.abs(ng - nt) > 1 || (ng === MAX_SIDE && nt === MAX_SIDE)) continue;
+          if (!balanced(g.value, t.value)) continue;
+          const giving = new Set(g.players.map((p) => p.id));
+          const getting = new Set(t.players.map((p) => p.id));
           const swapped: TeamRosters = {
             ...rosters,
-            [myTeam]: rosters[myTeam].map((p) => (p.id === give.id ? get : p)),
-            [theirTeam]: rosters[theirTeam].map((p) => (p.id === get.id ? give : p)),
+            [myTeam]: [...rosters[myTeam].filter((p) => !giving.has(p.id)), ...t.players],
+            [theirTeam]: [...rosters[theirTeam].filter((p) => !getting.has(p.id)), ...g.players],
           };
-          const after = allDuoTotals(duos, swapped, rated);
-          const myGain = expectedCats(duo.id, after) - myBefore;
-          const theirGain = expectedCats(partner.id, after) - theirBefore;
-          if (myGain <= 0 || theirGain < -FAIR_TOLERANCE) continue;
-          const chancesAfter = catChances(duo.id, after);
-          const catShift = CATS.map((c) => ({ key: c.key, label: c.label, change: chancesAfter[c.key] - myChancesBefore[c.key] }))
-            .filter((c) => Math.abs(c.change) >= 0.01)
-            .sort((x, y) => Math.abs(y.change) - Math.abs(x.change))
-            .slice(0, 4);
+          const after = new Map(totals);
+          after.set(me.id, duoTotals(me, swapped, rated, AVERAGE_WEEK));
+          after.set(partner.id, duoTotals(partner, swapped, rated, AVERAGE_WEEK));
+          const myGain = seasonExpectedCats(me.id, after) - myBefore;
+          if (myGain < MIN_GAIN) continue;
+          const theirGain = seasonExpectedCats(partner.id, after) - theirBefore;
+          if (theirGain < -FAIR_TOLERANCE) continue;
           ideas.push({
-            give: rated.get(give.id)!, giveFrom: managerOf.get(myTeam)!.name,
-            get: rated.get(get.id)!, getFrom: managerOf.get(theirTeam)!.name,
-            partnerDuo: partner, myGain, theirGain, catShift,
+            give: g.players.map((p) => rated.get(p.id)!), giveFrom: owner.get(myTeam)!.name,
+            get: t.players.map((p) => rated.get(p.id)!), getFrom: owner.get(theirTeam)!.name,
+            partnerDuo: partner, myGain, theirGain, giveValue: g.value, getValue: t.value, rosterChange: nt - ng,
           });
         }
       }
     }
   }
-  // Best idea per player I would receive, so one target is not listed once per bench player I could send.
-  const best = new Map<number, TradeIdea>();
-  for (const idea of ideas.sort((x, y) => y.myGain - x.myGain)) if (!best.has(idea.get.playerId)) best.set(idea.get.playerId, idea);
-  return [...best.values()].slice(0, MAX_TRADE_IDEAS);
+  // Win-win first, at most a couple per trade partner, and never the same incoming players twice.
+  const appeal = (i: TradeIdea) => i.myGain + i.theirGain - LOPSIDED_PENALTY * Math.abs(i.myGain - i.theirGain);
+  const perPartner = new Map<string, number>();
+  const seen = new Set<string>();
+  return ideas
+    .sort((x, y) => appeal(y) - appeal(x))
+    .filter((i) => {
+      // Same incoming players, or the same package sent to the same manager, is a near duplicate.
+      const getKey = i.get.map((p) => p.playerId).sort().join(",");
+      const giveKey = `${i.give.map((p) => p.playerId).sort().join(",")}>${i.getFrom}`;
+      const n = perPartner.get(i.getFrom) ?? 0;
+      if (seen.has(getKey) || seen.has(giveKey) || n >= MAX_IDEAS_PER_PARTNER) return false;
+      seen.add(getKey);
+      seen.add(giveKey);
+      perPartner.set(i.getFrom, n + 1);
+      return true;
+    })
+    .slice(0, MAX_TRADE_IDEAS);
 }

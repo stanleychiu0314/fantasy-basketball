@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blendPerGame, buildReport, catWinChance, matchupWinChance, normCdf, PRIOR_GAMES, ratePlayers, type PlayerInput } from "@/lib/analytics";
+import { blendPerGame, catWinChance, lineupTotals, matchupWinChance, normCdf, packageValue, PRIOR_GAMES, ratePlayers, tradeIdeas, tradeValue, type PlayerInput, type PlayerMeta } from "@/lib/analytics";
 import { CATS, emptyLine } from "@/lib/scoring";
 import { defaultConfig } from "@/lib/season";
 import type { StatLine } from "@/types/league";
@@ -48,26 +48,55 @@ describe("win chances", () => {
   });
 });
 
+describe("lineup filling", () => {
+  it("plays the best players first and stops at the lineup's game cap", () => {
+    const rated = ratePlayers([
+      { playerId: 1, name: "Star", projections: [season({ pts: 30, reb: 10 })], actual: null },
+      { playerId: 2, name: "Scrub", projections: [season({ pts: 5, reb: 1 })], actual: null },
+    ]);
+    const roster = [{ id: 1, name: "Star" }, { id: 2, name: "Scrub" }];
+    const t = lineupTotals(roster, rated, { gamesOf: () => 3, cap: 4 });
+    expect(t.games).toBe(4);
+    expect(t.pts).toBeCloseTo(30 * 3 + 5 * 1);
+  });
+
+  it("skips injured reserve", () => {
+    const rated = ratePlayers([{ playerId: 1, name: "Hurt", projections: [season({ pts: 30 })], actual: null }]);
+    expect(lineupTotals([{ id: 1, name: "Hurt", ir: true }], rated, { gamesOf: () => 3, cap: 30 }).games).toBe(0);
+  });
+});
+
+describe("trade value", () => {
+  it("prices earlier draft picks higher and discounts depth in a package", () => {
+    const meta = (draftPick: number): PlayerMeta => ({ proTeamId: 1, injuryStatus: "ACTIVE", onTeamId: 1, draftPick, adp: null });
+    expect(tradeValue(meta(1))).toBeGreaterThan(tradeValue(meta(50)));
+    expect(packageValue([10, 10])).toBeLessThan(20);
+  });
+});
+
 describe("trade ideas", () => {
-  it("never suggest a trade between duo partners", () => {
+  it("only suggests fair trades with other duos that help me", () => {
     const config = defaultConfig();
     const duos = config.duos.map((d, i) => ({ ...d, espnA: i * 2 + 1, espnB: i * 2 + 2 }));
     const players: PlayerInput[] = [];
+    const meta = new Map<number, PlayerMeta>();
     const rosters: Record<number, { id: number; name: string }[]> = {};
     for (let team = 1; team <= 12; team++) {
       rosters[team] = [];
       for (let k = 0; k < 3; k++) {
         const id = team * 10 + k;
-        // Uneven category profiles so some swaps help.
+        // Uneven category profiles so some swaps help; equal draft slots so trades are balanced.
         players.push({ playerId: id, name: `P${id}`, projections: [season({ pts: 10 + ((id * 7) % 13), reb: 3 + ((id * 3) % 9), blk: (id % 4) * 0.5, fgm: 4, fga: 9, ftm: 2, fta: 3 })], actual: null });
+        meta.set(id, { proTeamId: 1, injuryStatus: "ACTIVE", onTeamId: team, draftPick: 50, adp: null });
         rosters[team].push({ id, name: `P${id}` });
       }
     }
-    const report = buildReport(duos, rosters, ratePlayers(players), "d1");
-    expect(report.trades.length).toBeGreaterThan(0);
-    for (const t of report.trades) {
+    const ideas = tradeIdeas(duos, rosters, ratePlayers(players), meta, duos[0]);
+    expect(ideas.length).toBeGreaterThan(0);
+    for (const t of ideas) {
       expect(t.partnerDuo.id).not.toBe("d1");
       expect(t.myGain).toBeGreaterThan(0);
+      expect(Math.abs(t.give.length - t.get.length)).toBeLessThanOrEqual(1);
     }
   });
 });

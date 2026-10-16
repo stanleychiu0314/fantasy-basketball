@@ -1,4 +1,4 @@
-import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
+import { boolean, index, integer, jsonb, pgTable, primaryKey, real, serial, text, timestamp } from "drizzle-orm/pg-core";
 import type { LeagueConfig, StatLine } from "@/types/league";
 import type { EspnSnapshot, SeasonLine } from "@/lib/espn";
 
@@ -115,4 +115,33 @@ export const playerProjections = pgTable(
     updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
   },
   (t) => [primaryKey({ columns: [t.source, t.playerId] })],
+);
+
+/**
+ * Every player in ESPN's pool with what the analytics need besides stats: who
+ * rosters him (null = free agent, i.e. the waiver wire), injury status, and what
+ * he cost in this league's draft, used as his trade value.
+ */
+export const players = pgTable("players", {
+  playerId: integer("player_id").primaryKey(),
+  name: text("name").notNull(),
+  proTeamId: integer("pro_team_id").notNull(),
+  onTeamId: integer("on_team_id"),
+  injuryStatus: text("injury_status").notNull(),
+  /** Overall pick in this league's draft; null if he went undrafted here. */
+  draftPick: integer("draft_pick"),
+  /** ESPN average draft position across all leagues, the fallback trade value. */
+  adp: real("adp"),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
+/** NBA game days per pro team, so each week's projection counts real games. */
+export const nbaGames = pgTable(
+  "nba_games",
+  {
+    proTeamId: integer("pro_team_id").notNull(),
+    /** ESPN scoring period: day 1 is opening night. */
+    day: integer("day").notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.proTeamId, t.day] })],
 );

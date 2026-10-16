@@ -64,11 +64,19 @@ type EspnTeam = {
 
 type EspnPoolPlayer = {
   onTeamId?: number;
-  player?: { id?: number; fullName?: string; proTeamId?: number; stats?: (EspnStatEntry & { id?: string })[] };
+  player?: {
+    id?: number;
+    fullName?: string;
+    proTeamId?: number;
+    injuryStatus?: string;
+    ownership?: { averageDraftPosition?: number };
+    stats?: (EspnStatEntry & { id?: string })[];
+  };
 };
 
 export type EspnLeague = {
   players?: EspnPoolPlayer[];
+  draftDetail?: { picks?: { overallPickNumber: number; playerId: number }[] };
   scoringPeriodId?: number;
   status?: { currentMatchupPeriod?: number; latestScoringPeriod?: number };
   settings?: { name?: string; scheduleSettings?: { matchupPeriods?: Record<string, number[]> } };
@@ -224,6 +232,10 @@ export type PoolPlayer = {
   proTeamId: number;
   /** ESPN fantasy team that rosters him, or null for a free agent. */
   onTeamId: number | null;
+  /** ESPN injury status, e.g. "ACTIVE", "DAY_TO_DAY", "OUT". */
+  injuryStatus: string;
+  /** Average draft position across ESPN leagues, or null if never drafted. */
+  adp: number | null;
   projection: SeasonLine | null;
   actual: SeasonLine | null;
 };
@@ -267,6 +279,44 @@ export function parsePlayerPool(raw: EspnLeague): PoolPlayer[] {
     const projection = season(pl.stats, PROJECTED_SEASON_ID);
     const actual = season(pl.stats, ACTUAL_SEASON_ID);
     if (!projection && !actual) return [];
-    return [{ playerId: pl.id, name: pl.fullName, proTeamId: pl.proTeamId ?? 0, onTeamId: p.onTeamId || null, projection, actual }];
+    return [{
+      playerId: pl.id,
+      name: pl.fullName,
+      proTeamId: pl.proTeamId ?? 0,
+      onTeamId: p.onTeamId || null,
+      injuryStatus: pl.injuryStatus ?? "ACTIVE",
+      adp: pl.ownership?.averageDraftPosition || null,
+      projection,
+      actual,
+    }];
   });
+}
+
+/** Overall pick number in this league's draft, by player id. */
+export async function fetchDraftPicks(): Promise<EspnResult<Map<number, number>>> {
+  const r = await getLeague("view=mDraftDetail");
+  if (r.status !== "ok") return r;
+  return { status: "ok", data: new Map((r.data.draftDetail?.picks ?? []).map((p) => [p.playerId, p.overallPickNumber])) };
+}
+
+type EspnProSchedule = { settings?: { proTeams?: { id: number; proGamesByScoringPeriod?: Record<string, unknown[]> }[] } };
+
+/** Game days (ESPN scoring periods, day 1 = opening night) for every NBA team. */
+export async function fetchNbaSchedule(): Promise<EspnResult<{ proTeamId: number; day: number }[]>> {
+  try {
+    const res = await fetch(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/${ESPN_SEASON}?view=proTeamSchedules_wl`, {
+      cache: "no-store",
+      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
+    });
+    if (!res.ok) return { status: "error", message: `ESPN schedule returned ${res.status}` };
+    const raw = (await res.json()) as EspnProSchedule;
+    const rows = (raw.settings?.proTeams ?? []).flatMap((t) =>
+      Object.entries(t.proGamesByScoringPeriod ?? {})
+        .filter(([, games]) => games.length > 0)
+        .map(([day]) => ({ proTeamId: t.id, day: Number(day) })),
+    );
+    return { status: "ok", data: rows };
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "ESPN schedule request failed" };
+  }
 }

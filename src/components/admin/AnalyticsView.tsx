@@ -1,185 +1,305 @@
 import Link from "next/link";
 import type { Duo } from "@/types/league";
 import { CATS, formatValue } from "@/lib/scoring";
-import { GAMES_PER_WEEK, PRIOR_GAMES, type Report } from "@/lib/analytics";
+import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type WeekReport } from "@/lib/analytics";
+import { weekRange } from "@/lib/season";
 import { RefreshProjections } from "./RefreshProjections";
 
-type Props = {
-  duos: Duo[];
-  duoId: string;
-  report: Report | null;
-  sources: string[];
-  updatedAt: string | null;
-  playerCount: number;
-  gamesPlayed: number;
+type Header = { me: Duo; week: number; weeks: number; regularWeeks: number; currentWeek: number; final: Record<number, boolean> };
+type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
+type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean };
+type Analysis = {
+  weekly: WeekReport | null;
+  weekLabel: string;
+  started: boolean;
+  season: SeasonReport;
+  trades: TradeIdea[];
+  roster: RosterRow[];
 };
 
 const PERCENT = 100;
 const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
 const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
+const names = (ps: RatedPlayer[]) => ps.map((p) => p.name).join(" + ");
 
-/** Admin-only analytics: category strengths, matchup odds, trade ideas and the roster, for one duo. */
-export function AnalyticsView({ duos, duoId, report, sources, updatedAt, playerCount, gamesPlayed }: Props) {
+function Meter({ value }: { value: number }) {
+  return (
+    <>
+      <span className="meter"><i style={{ width: pct(value) }} /></span> <span className="num">{pct(value)}</span>
+    </>
+  );
+}
+
+/** Stanley's private analytics: the week's matchup and pickups, season outlook, trades and roster. */
+export function AnalyticsView({ header, data, analysis }: { header: Header; data: DataInfo; analysis: Analysis | null }) {
+  const { me, week, weeks, regularWeeks, currentWeek, final } = header;
   return (
     <div className="wrap adm">
       <header className="top" style={{ paddingBlock: 0 }}>
         <div>
-          <p className="eyebrow">Commissioner only</p>
-          <h1>Duo <span>analytics</span></h1>
+          <p className="eyebrow">Only you can see this</p>
+          <h1>{me.name} <span>analytics</span></h1>
+          <p className="sub">{me.a} + {me.b}, scored as one duo.</p>
         </div>
         <div className="pills">
           <Link className="btn" href="/admin">Back to admin</Link>
         </div>
       </header>
 
-      <nav className="row2" aria-label="Duo">
-        {duos.map((d) => (
-          <Link key={d.id} className={`tab${d.id === duoId ? " on" : ""}`} aria-current={d.id === duoId ? "page" : undefined} href={`/admin/analytics?duo=${d.id}`}>
-            {d.name}
-          </Link>
-        ))}
-      </nav>
-
       <section className="card" style={{ display: "grid", gap: 8 }}>
         <p className="eyebrow">Projection data</p>
         <p className="note">
-          {playerCount
-            ? `${playerCount} players from ${sources.join(", ") || "no projection source"}. Projections are blended with actual stats: a player's real games count more as he plays them (equal weight at ${PRIOR_GAMES} games). Most games played so far: ${gamesPlayed}.`
+          {data.playerCount
+            ? `${data.playerCount} players from ${data.sources.join(", ") || "no projection source"}. Each player's projection is blended with his real games: they count equally at ${PRIOR_GAMES} games, and real stats take over after that. Most games played so far: ${data.gamesPlayed}.`
             : "No projections stored yet. Pull them from ESPN to start."}
-          {updatedAt ? ` Last refreshed ${new Date(updatedAt).toLocaleString()}.` : ""}
+          {data.updatedAt ? ` Last refreshed ${new Date(data.updatedAt).toLocaleString()}.` : ""}
         </p>
         <RefreshProjections />
       </section>
 
-      {!report ? (
+      <nav className="weeks" aria-label="Week">
+        {Array.from({ length: weeks }, (_, i) => i + 1).map((w) => (
+          <Link
+            key={w}
+            href={`/admin/analytics?week=${w}`}
+            className={`wk${w === currentWeek ? " cur" : ""}${final[w] ? " done" : ""}${w > regularWeeks ? " po" : ""}`}
+            aria-current={w === week ? "page" : undefined}
+            aria-pressed={w === week}
+            title={weekRange(w)}
+          >
+            {w}
+          </Link>
+        ))}
+      </nav>
+
+      {!analysis ? (
         <p className="note">Analytics appear once projections are stored and ESPN rosters have synced.</p>
       ) : (
         <>
-          <section className="card">
-            <p className="eyebrow">{report.duo.name} · projected week</p>
-            <p style={{ marginTop: 6 }}>
-              <span className="big">{report.expectedCats.toFixed(1)}</span>
-              <span className="note"> of 9 categories won in an average week, against an average opponent.</span>
-            </p>
-          </section>
-
-          <section className="card">
-            <p className="eyebrow">Strengths and weaknesses</p>
-            <div className="scroll" style={{ marginTop: 8 }}>
-              <table>
-                <thead>
-                  <tr><th>Category</th><th style={{ textAlign: "right" }}>Projected week</th><th>Rank of {duos.length}</th><th>Win chance</th><th /></tr>
-                </thead>
-                <tbody>
-                  {report.categories.map((c) => (
-                    <tr key={c.cat.key}>
-                      <td><b>{c.cat.label}</b></td>
-                      <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.weekly)}</td>
-                      <td className="num">{c.rank}</td>
-                      <td>
-                        <span className="meter"><i style={{ width: pct(c.winChance) }} /></span> <span className="num">{pct(c.winChance)}</span>
-                      </td>
-                      <td>{c.verdict !== "even" && <span className={`tag verdict ${c.verdict}`}>{c.verdict === "strength" ? "Strength" : "Weakness"}</span>}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="note" style={{ marginTop: 8 }}>
-              Win chance is the average chance of winning that category against each of the other duos in one week.
-            </p>
-          </section>
-
-          <section className="card">
-            <p className="eyebrow">Matchup outlook</p>
-            <div className="scroll" style={{ marginTop: 8 }}>
-              <table>
-                <thead><tr><th>Opponent</th><th style={{ textAlign: "right" }}>Expected categories</th><th>Chance to win the week</th></tr></thead>
-                <tbody>
-                  {report.outlook.map((o) => (
-                    <tr key={o.duo.id}>
-                      <td><b>{o.duo.name}</b></td>
-                      <td style={{ textAlign: "right" }} className="num">{o.expectedCats.toFixed(1)} - {(CATS.length - o.expectedCats).toFixed(1)}</td>
-                      <td><span className="meter"><i style={{ width: pct(o.winChance) }} /></span> <span className="num">{pct(o.winChance)}</span></td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </section>
-
-          <section className="card">
-            <p className="eyebrow">Trade ideas</p>
-            <p className="note" style={{ marginTop: 6 }}>
-              One-for-one swaps with managers on other duos that raise your expected categories per week, where the other duo
-              gains too or barely loses, so they might say yes. Trades between duo partners are never suggested.
-            </p>
-            {report.trades.length === 0 ? (
-              <p className="note" style={{ marginTop: 8 }}>No trade clearly helps right now.</p>
-            ) : (
-              <div className="scroll" style={{ marginTop: 8 }}>
-                <table>
-                  <thead><tr><th>You give</th><th>You get</th><th style={{ textAlign: "right" }}>You</th><th style={{ textAlign: "right" }}>Them</th><th>Biggest category shifts</th></tr></thead>
-                  <tbody>
-                    {report.trades.map((t) => (
-                      <tr key={`${t.give.playerId}-${t.get.playerId}`}>
-                        <td><b>{t.give.name}</b><div className="note">{t.giveFrom}</div></td>
-                        <td><b>{t.get.name}</b><div className="note">{t.getFrom} · {t.partnerDuo.name}</div></td>
-                        <td style={{ textAlign: "right" }} className="num up">{signed(t.myGain)}</td>
-                        <td style={{ textAlign: "right" }} className={`num ${t.theirGain >= 0 ? "up" : "down"}`}>{signed(t.theirGain)}</td>
-                        <td>
-                          {t.catShift.map((c) => (
-                            <span key={c.key} className={`tag verdict ${c.change > 0 ? "strength" : "weakness"}`} style={{ marginRight: 4 }}>
-                              {c.label} {c.change > 0 ? "+" : ""}{Math.round(c.change * PERCENT)}
-                            </span>
-                          ))}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-            <p className="note" style={{ marginTop: 8 }}>
-              You and Them are the change in expected categories won per week. Shifts are the change in your weekly win chance for that category, in points.
-            </p>
-          </section>
-
-          <section className="card">
-            <p className="eyebrow">Roster</p>
-            <div className="scroll" style={{ marginTop: 8 }}>
-              <table>
-                <thead>
-                  <tr>
-                    <th>Player</th><th>Role</th><th style={{ textAlign: "right" }}>Value</th>
-                    {CATS.map((c) => <th key={c.key} style={{ textAlign: "right" }}>{c.label}</th>)}
-                  </tr>
-                </thead>
-                <tbody>
-                  {[...report.roster].sort((a, b) => b.player.value - a.player.value).map(({ player, manager, starter, ir }) => (
-                    <tr key={player.playerId}>
-                      <td><b>{player.name}</b><div className="note">{manager}{player.actualGames ? ` · ${player.actualGames} games played` : ""}</div></td>
-                      <td>{ir ? "IR" : starter ? "Starter" : "Bench"}</td>
-                      <td style={{ textAlign: "right" }} className="num">{player.value.toFixed(1)}</td>
-                      {CATS.map((c) => (
-                        <td key={c.key} style={{ textAlign: "right" }} className={`num ${player.z[c.key] >= 1 ? "up" : player.z[c.key] <= -1 ? "down" : ""}`}>
-                          {c.pct
-                            ? formatValue(c, player.perGame[c.pct[1]] > 0 ? player.perGame[c.pct[0]] / player.perGame[c.pct[1]] : null)
-                            : player.perGame[c.field!].toFixed(1)}
-                        </td>
-                      ))}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-            <p className="note" style={{ marginTop: 8 }}>
-              Per-game numbers. Value is the sum of 9-category z-scores against the top 156 players. Green and red mark categories a
-              player is a big plus or minus in. Starters are each manager&apos;s top 10 healthy players by value; weekly totals assume {GAMES_PER_WEEK} games per player.
-            </p>
-          </section>
+          <WeekSection week={week} analysis={analysis} />
+          <SeasonSection season={analysis.season} me={me} />
+          <TradeSection trades={analysis.trades} />
+          <RosterSection roster={analysis.roster} week={week} />
         </>
       )}
     </div>
+  );
+}
+
+function WeekSection({ week, analysis }: { week: number; analysis: Analysis }) {
+  const w = analysis.weekly;
+  const title = `${analysis.weekLabel ? `${analysis.weekLabel} · ` : ""}Week ${week} · ${weekRange(week)}`;
+  if (!w) {
+    return (
+      <section className="card">
+        <p className="eyebrow">{title}</p>
+        <p className="note" style={{ marginTop: 6 }}>No matchup for you this week.</p>
+      </section>
+    );
+  }
+  return (
+    <>
+      <section className="card">
+        <p className="eyebrow">{title}</p>
+        <h2 className="h2" style={{ fontSize: "1.8rem", marginTop: 4 }}>vs {w.opponent.name}</h2>
+        <p style={{ marginTop: 6 }}>
+          <span className="big">{pct(w.winChance)}</span>
+          <span className="note"> to win the week · {w.expectedCats.toFixed(1)} - {(CATS.length - w.expectedCats).toFixed(1)} expected categories · games {analysis.started ? "left" : "this week"}: you {Math.round(w.myGames)}, them {Math.round(w.theirGames)}</span>
+        </p>
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>You</th><th style={{ textAlign: "right" }}>Them</th><th>Your chance</th></tr></thead>
+            <tbody>
+              {w.cats.map((c) => (
+                <tr key={c.cat.key}>
+                  <td><b>{c.cat.label}</b></td>
+                  <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.mine)}</td>
+                  <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.theirs)}</td>
+                  <td><Meter value={c.winChance} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="note" style={{ marginTop: 8 }}>
+          {analysis.started ? "Stats already played this week plus a projection for the games left. " : "Projected from each player's games this week. "}
+          Players listed OUT count for zero games; each manager fills 10 lineup spots a day, best players first.
+        </p>
+      </section>
+
+      <section className="card">
+        <p className="eyebrow">Pickups for this week</p>
+        {w.pickups.length === 0 ? (
+          <p className="note" style={{ marginTop: 6 }}>No free agent beats anyone on your rosters this week.</p>
+        ) : (
+          <div className="scroll" style={{ marginTop: 8 }}>
+            <table>
+              <thead><tr><th>Add</th><th>Drop</th><th style={{ textAlign: "right" }}>This week</th><th style={{ textAlign: "right" }}>Rest of season</th></tr></thead>
+              <tbody>
+                {w.pickups.map((p) => (
+                  <tr key={p.add.playerId}>
+                    <td><b>{p.add.name}</b><div className="note">{p.addGames} games</div></td>
+                    <td>{p.drop.name}<div className="note">{p.dropFrom}</div></td>
+                    <td style={{ textAlign: "right" }} className="num up">{signed(p.weekGain)}</td>
+                    <td style={{ textAlign: "right" }} className={`num ${p.seasonGain >= 0 ? "up" : "down"}`}>{signed(p.seasonGain)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+        <p className="note" style={{ marginTop: 8 }}>
+          Change in expected categories won. A pickup that helps this week but hurts the rest of the season is a short-term stream.
+        </p>
+      </section>
+
+      {w.targets.length > 0 && (
+        <section className="card">
+          <p className="eyebrow">Categories you are losing this week</p>
+          <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
+            {w.targets.map((t) => (
+              <div key={t.cat.key}>
+                <b>{t.cat.label}</b> <span className="note">({pct(t.winChance)} chance)</span>
+                <div className="paid-list" style={{ marginTop: 4 }}>
+                  {t.players.map((p) => (
+                    <span key={p.player.playerId} className="tag">{p.player.name} · {p.games}g</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="note" style={{ marginTop: 8 }}>Best free agents for each category this week, counting how many games they play.</p>
+        </section>
+      )}
+    </>
+  );
+}
+
+function SeasonSection({ season, me }: { season: SeasonReport; me: Duo }) {
+  return (
+    <>
+      <section className="card">
+        <p className="eyebrow">Season outlook · strengths and weaknesses</p>
+        <p style={{ marginTop: 6 }}>
+          <span className="big">{season.expectedCats.toFixed(1)}</span>
+          <span className="note"> of 9 categories in an average week for {me.name}.</span>
+        </p>
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>Average week</th><th>Rank of 6</th><th>Win chance</th><th /></tr></thead>
+            <tbody>
+              {season.categories.map((c) => (
+                <tr key={c.cat.key}>
+                  <td><b>{c.cat.label}</b></td>
+                  <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.weekly)}</td>
+                  <td className="num">{c.rank}</td>
+                  <td><Meter value={c.winChance} /></td>
+                  <td>{c.verdict !== "even" && <span className={`tag verdict ${c.verdict}`}>{c.verdict === "strength" ? "Strength" : "Strengthen"}</span>}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      <section className="card">
+        <p className="eyebrow">Season outlook · against each duo</p>
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Opponent</th><th style={{ textAlign: "right" }}>Expected categories</th><th>Chance to win an average week</th></tr></thead>
+            <tbody>
+              {season.outlook.map((o) => (
+                <tr key={o.duo.id}>
+                  <td><b>{o.duo.name}</b></td>
+                  <td style={{ textAlign: "right" }} className="num">{o.expectedCats.toFixed(1)} - {(CATS.length - o.expectedCats).toFixed(1)}</td>
+                  <td><Meter value={o.winChance} /></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </section>
+    </>
+  );
+}
+
+function TradeSection({ trades }: { trades: TradeIdea[] }) {
+  return (
+    <section className="card">
+      <p className="eyebrow">Trade ideas</p>
+      <p className="note" style={{ marginTop: 6 }}>
+        1 to 3 players a side. Each package is priced by where its players went in your league&apos;s draft, so both sides are
+        worth about the same. Ideas where both duos gain about equally come first, since those get accepted. Trades with
+        your partner are never suggested.
+      </p>
+      {trades.length === 0 ? (
+        <p className="note" style={{ marginTop: 8 }}>No fair trade clearly helps right now.</p>
+      ) : (
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>You give</th><th>You get</th><th style={{ textAlign: "right" }}>You</th><th style={{ textAlign: "right" }}>Them</th><th style={{ textAlign: "right" }}>Draft value</th></tr></thead>
+            <tbody>
+              {trades.map((t) => (
+                <tr key={`${names(t.give)}>${names(t.get)}`}>
+                  <td><b>{names(t.give)}</b><div className="note">{t.giveFrom}</div></td>
+                  <td>
+                    <b>{names(t.get)}</b>
+                    <div className="note">
+                      {t.getFrom} · {t.partnerDuo.name}
+                      {t.rosterChange > 0 ? ` · you drop ${t.rosterChange}` : t.rosterChange < 0 ? ` · you add ${-t.rosterChange} free agent` : ""}
+                    </div>
+                  </td>
+                  <td style={{ textAlign: "right" }} className="num up">{signed(t.myGain)}</td>
+                  <td style={{ textAlign: "right" }} className={`num ${t.theirGain >= 0 ? "up" : "down"}`}>{signed(t.theirGain)}</td>
+                  <td style={{ textAlign: "right" }} className="num">{t.giveValue.toFixed(0)} for {t.getValue.toFixed(0)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+      <p className="note" style={{ marginTop: 8 }}>You and Them: change in expected categories won in an average week, for the rest of the season.</p>
+    </section>
+  );
+}
+
+function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) {
+  return (
+    <section className="card">
+      <p className="eyebrow">Your roster</p>
+      <div className="scroll" style={{ marginTop: 8 }}>
+        <table>
+          <thead>
+            <tr>
+              <th>Player</th><th>Role</th><th style={{ textAlign: "right" }}>Wk {week} games</th><th style={{ textAlign: "right" }}>Value</th>
+              {CATS.map((c) => <th key={c.key} style={{ textAlign: "right" }}>{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {[...roster].sort((a, b) => b.player.value - a.player.value).map((r) => (
+              <tr key={r.player.playerId}>
+                <td>
+                  <b>{r.player.name}</b>
+                  <div className="note">{r.manager}{r.injury !== "ACTIVE" ? ` · ${r.injury.replace("_", " ").toLowerCase()}` : ""}</div>
+                </td>
+                <td>{r.ir ? "IR" : r.starter ? "Starter" : "Bench"}</td>
+                <td style={{ textAlign: "right" }} className="num">{r.games}</td>
+                <td style={{ textAlign: "right" }} className="num">{r.player.value.toFixed(1)}</td>
+                {CATS.map((c) => (
+                  <td key={c.key} style={{ textAlign: "right" }} className={`num ${r.player.z[c.key] >= 1 ? "up" : r.player.z[c.key] <= -1 ? "down" : ""}`}>
+                    {c.pct
+                      ? formatValue(c, r.player.perGame[c.pct[1]] > 0 ? r.player.perGame[c.pct[0]] / r.player.perGame[c.pct[1]] : null)
+                      : r.player.perGame[c.field!].toFixed(1)}
+                  </td>
+                ))}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note" style={{ marginTop: 8 }}>
+        Per-game numbers. Value is the sum of 9-category z-scores against the top 156 players. Green and red mark a big plus or minus.
+      </p>
+    </section>
   );
 }
