@@ -48,6 +48,26 @@ describe("schedule", () => {
   });
 });
 
+describe("20-week regular season", () => {
+  it("has every duo play each of the 5 others exactly 4 times, once every 5 weeks", () => {
+    const ids = config.duos.map((d) => d.id);
+    const meetings = new Map<string, number[]>();
+    for (let w = 1; w <= 20; w++) {
+      const pairs = defaultPairs(w, ids);
+      expect(new Set(pairs.flat()).size).toBe(6);
+      for (const [a, b] of pairs) {
+        const key = [a, b].sort().join("-");
+        meetings.set(key, [...(meetings.get(key) ?? []), w]);
+      }
+    }
+    expect(meetings.size).toBe(15);
+    for (const weeks of meetings.values()) {
+      expect(weeks).toHaveLength(4);
+      expect(weeks.slice(1).map((w, i) => w - weeks[i])).toEqual([5, 5, 5]);
+    }
+  });
+});
+
 describe("standings", () => {
   it("ranks the matchup winner first", () => {
     const scores = { 1: { d1a: line({ pts: 100, reb: 50 }), d6a: line({ pts: 90, reb: 40 }) } };
