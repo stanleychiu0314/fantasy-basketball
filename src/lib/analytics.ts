@@ -263,7 +263,13 @@ export type CategoryReport = {
 
 export type MatchupOutlook = { duo: Duo; expectedCats: number; winChance: number };
 
-export type SeasonReport = { expectedCats: number; categories: CategoryReport[]; outlook: MatchupOutlook[] };
+export type SeasonReport = {
+  expectedCats: number;
+  categories: CategoryReport[];
+  outlook: MatchupOutlook[];
+  /** Every duo's average-week value per category, in CATS order, for a side-by-side table. */
+  table: { duo: Duo; values: (number | null)[] }[];
+};
 
 /** Season-long strengths and weaknesses, and an average-week matchup against every other duo. */
 export function seasonReport(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, me: Duo): SeasonReport {
@@ -281,7 +287,8 @@ export function seasonReport(duos: Duo[], rosters: TeamRosters, rated: Map<numbe
     return { cat, weekly: catValue(mine, cat), rank: better + 1, winChance: w, verdict: w >= STRONG ? "strength" : w <= 1 - STRONG ? "weakness" : "even" };
   });
   const outlook = opponents.map((d, i) => ({ duo: d, expectedCats: sum(vs[i]), winChance: matchupWinChance(vs[i]) }));
-  return { expectedCats: seasonExpectedCats(me.id, totals), categories, outlook };
+  const table = duos.map((d) => ({ duo: d, values: CATS.map((cat) => catValue(totals.get(d.id)!, cat)) }));
+  return { expectedCats: seasonExpectedCats(me.id, totals), categories, outlook, table };
 }
 
 export type CatLine = { cat: Category; mine: number | null; theirs: number | null; winChance: number };

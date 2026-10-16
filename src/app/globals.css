@@ -295,3 +295,9 @@ button.bgame:hover{border-color:var(--accent);transform:translateY(-1px)}
 .tag.verdict.weakness{background:color-mix(in srgb,var(--loss) 15%,var(--surface));color:var(--loss)}
 a.tab{text-decoration:none}
 a.tab.on{background:var(--accent);color:var(--accent-ink)}
+tr.mine td{background:var(--accent-soft)}
+td.lead{color:var(--accent);font-weight:800}
+a.mini{text-decoration:none;color:inherit;transition:border-color .2s,transform .2s}
+a.mini:hover{transform:translateY(-1px)}
+a.mini .go{grid-column:1/-1;color:var(--accent);font-weight:700;font-size:13px}
+a.mini .opp{grid-column:1/-1;font-family:var(--display);font-weight:800;font-size:1.6rem;text-transform:uppercase;line-height:1.05}

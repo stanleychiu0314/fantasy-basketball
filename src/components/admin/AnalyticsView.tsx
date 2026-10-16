@@ -5,17 +5,10 @@ import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type 
 import { weekRange } from "@/lib/season";
 import { RefreshProjections } from "./RefreshProjections";
 
-type Header = { me: Duo; week: number; weeks: number; regularWeeks: number; currentWeek: number; final: Record<number, boolean> };
-type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean };
-type Analysis = {
-  weekly: WeekReport | null;
-  weekLabel: string;
-  started: boolean;
-  season: SeasonReport;
-  trades: TradeIdea[];
-  roster: RosterRow[];
-};
+type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
+type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
+type Overview = { season: SeasonReport; trades: TradeIdea[]; roster: RosterRow[]; currentWeek: number };
 
 const PERCENT = 100;
 const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
@@ -30,70 +23,78 @@ function Meter({ value }: { value: number }) {
   );
 }
 
-/** Stanley's private analytics: the week's matchup and pickups, season outlook, trades and roster. */
-export function AnalyticsView({ header, data, analysis }: { header: Header; data: DataInfo; analysis: Analysis | null }) {
-  const { me, week, weeks, regularWeeks, currentWeek, final } = header;
+function TopBar({ me, eyebrow, back }: { me: Duo; eyebrow: string; back: { href: string; label: string } }) {
+  return (
+    <header className="top" style={{ paddingBlock: 0 }}>
+      <div>
+        <p className="eyebrow">{eyebrow}</p>
+        <h1>{me.name} <span>analytics</span></h1>
+        <p className="sub">{me.a} + {me.b}, scored as one duo.</p>
+      </div>
+      <div className="pills">
+        <Link className="btn" href={back.href}>{back.label}</Link>
+      </div>
+    </header>
+  );
+}
+
+/** The overview: this week's and next week's matchup buttons, then season-long analysis. */
+export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info: DataInfo; weeks: WeekLink[]; analysis: Overview | null }) {
   return (
     <div className="wrap adm">
-      <header className="top" style={{ paddingBlock: 0 }}>
-        <div>
-          <p className="eyebrow">Only you can see this</p>
-          <h1>{me.name} <span>analytics</span></h1>
-          <p className="sub">{me.a} + {me.b}, scored as one duo.</p>
-        </div>
-        <div className="pills">
-          <Link className="btn" href="/admin">Back to admin</Link>
-        </div>
-      </header>
+      <TopBar me={me} eyebrow="Only you can see this" back={{ href: "/admin", label: "Back to admin" }} />
+
+      <div className="strip">
+        {weeks.map((w) => (
+          <Link key={w.week} className="mini" href={`/admin/analytics/week/${w.week}`}>
+            <span className="st" style={{ gridColumn: "1 / -1" }}>{w.when} · Week {w.week} · {weekRange(w.week)}{w.game?.label ? ` · ${w.game.label}` : ""}</span>
+            <span className="opp">{w.game ? `vs ${w.game.opponent.name}` : "No game this week"}</span>
+            <span className="go">Open matchup and pickups →</span>
+          </Link>
+        ))}
+      </div>
 
       <section className="card" style={{ display: "grid", gap: 8 }}>
         <p className="eyebrow">Projection data</p>
         <p className="note">
-          {data.playerCount
-            ? `${data.playerCount} players from ${data.sources.join(", ") || "no projection source"}. Each player's projection is blended with his real games: they count equally at ${PRIOR_GAMES} games, and real stats take over after that. Most games played so far: ${data.gamesPlayed}.`
+          {info.playerCount
+            ? `${info.playerCount} players from ${info.sources.join(", ") || "no projection source"}. Each player's projection is blended with his real games: they count equally at ${PRIOR_GAMES} games, and real stats take over after that. Most games played so far: ${info.gamesPlayed}.`
             : "No projections stored yet. Pull them from ESPN to start."}
-          {data.updatedAt ? ` Last refreshed ${new Date(data.updatedAt).toLocaleString()}.` : ""}
+          {info.updatedAt ? ` Last refreshed ${new Date(info.updatedAt).toLocaleString()}.` : ""}
         </p>
         <RefreshProjections />
       </section>
-
-      <nav className="weeks" aria-label="Week">
-        {Array.from({ length: weeks }, (_, i) => i + 1).map((w) => (
-          <Link
-            key={w}
-            href={`/admin/analytics?week=${w}`}
-            className={`wk${w === currentWeek ? " cur" : ""}${final[w] ? " done" : ""}${w > regularWeeks ? " po" : ""}`}
-            aria-current={w === week ? "page" : undefined}
-            aria-pressed={w === week}
-            title={weekRange(w)}
-          >
-            {w}
-          </Link>
-        ))}
-      </nav>
 
       {!analysis ? (
         <p className="note">Analytics appear once projections are stored and ESPN rosters have synced.</p>
       ) : (
         <>
-          <WeekSection week={week} analysis={analysis} />
           <SeasonSection season={analysis.season} me={me} />
           <TradeSection trades={analysis.trades} />
-          <RosterSection roster={analysis.roster} week={week} />
+          <RosterSection roster={analysis.roster} week={analysis.currentWeek} />
         </>
       )}
     </div>
   );
 }
 
-function WeekSection({ week, analysis }: { week: number; analysis: Analysis }) {
-  const w = analysis.weekly;
-  const title = `${analysis.weekLabel ? `${analysis.weekLabel} · ` : ""}Week ${week} · ${weekRange(week)}`;
+/** One week's matchup screen: the projection against that week's opponent, then pickups. */
+export function WeekMatchup(props: { me: Duo; week: number; when: string; label: string; report: WeekReport | null; started: boolean }) {
+  return (
+    <div className="wrap adm">
+      <TopBar me={props.me} eyebrow={props.when} back={{ href: "/admin/analytics", label: "Back to overview" }} />
+      <WeekSection {...props} />
+    </div>
+  );
+}
+
+function WeekSection({ week, label, report: w, started }: { week: number; label: string; report: WeekReport | null; started: boolean }) {
+  const title = `${label ? `${label} · ` : ""}Week ${week} · ${weekRange(week)}`;
   if (!w) {
     return (
       <section className="card">
         <p className="eyebrow">{title}</p>
-        <p className="note" style={{ marginTop: 6 }}>No matchup for you this week.</p>
+        <p className="note" style={{ marginTop: 6 }}>No matchup to show: either you have no game this week, or projections have not been loaded yet.</p>
       </section>
     );
   }
@@ -104,7 +105,7 @@ function WeekSection({ week, analysis }: { week: number; analysis: Analysis }) {
         <h2 className="h2" style={{ fontSize: "1.8rem", marginTop: 4 }}>vs {w.opponent.name}</h2>
         <p style={{ marginTop: 6 }}>
           <span className="big">{pct(w.winChance)}</span>
-          <span className="note"> to win the week · {w.expectedCats.toFixed(1)} - {(CATS.length - w.expectedCats).toFixed(1)} expected categories · games {analysis.started ? "left" : "this week"}: you {Math.round(w.myGames)}, them {Math.round(w.theirGames)}</span>
+          <span className="note"> to win the week · {w.expectedCats.toFixed(1)} - {(CATS.length - w.expectedCats).toFixed(1)} expected categories · games {started ? "left" : "this week"}: you {Math.round(w.myGames)}, them {Math.round(w.theirGames)}</span>
         </p>
         <div className="scroll" style={{ marginTop: 8 }}>
           <table>
@@ -122,7 +123,7 @@ function WeekSection({ week, analysis }: { week: number; analysis: Analysis }) {
           </table>
         </div>
         <p className="note" style={{ marginTop: 8 }}>
-          {analysis.started ? "Stats already played this week plus a projection for the games left. " : "Projected from each player's games this week. "}
+          {started ? "Stats already played this week plus a projection for the games left. " : "Projected from each player's games this week. "}
           Players listed OUT count for zero games; each manager fills 10 lineup spots a day, best players first.
         </p>
       </section>
@@ -176,8 +177,35 @@ function WeekSection({ week, analysis }: { week: number; analysis: Analysis }) {
 }
 
 function SeasonSection({ season, me }: { season: SeasonReport; me: Duo }) {
+  // Leader per category column, so the table shows at a glance who owns each category.
+  const best = CATS.map((cat, i) => {
+    const vals = season.table.map((r) => r.values[i] ?? (cat.low ? Infinity : -Infinity));
+    return cat.low ? Math.min(...vals) : Math.max(...vals);
+  });
   return (
     <>
+      <section className="card">
+        <p className="eyebrow">Your duo vs every duo · average week</p>
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead>
+              <tr><th>Duo</th>{CATS.map((c) => <th key={c.key} style={{ textAlign: "right" }}>{c.label}</th>)}</tr>
+            </thead>
+            <tbody>
+              {season.table.map((r) => (
+                <tr key={r.duo.id} className={r.duo.id === me.id ? "mine" : ""}>
+                  <td><b>{r.duo.name}</b></td>
+                  {CATS.map((c, i) => (
+                    <td key={c.key} style={{ textAlign: "right" }} className={`num${r.values[i] === best[i] ? " lead" : ""}`}>{formatValue(c, r.values[i])}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        <p className="note" style={{ marginTop: 8 }}>Projected totals for an average week. The leader in each category is highlighted.</p>
+      </section>
+
       <section className="card">
         <p className="eyebrow">Season outlook · strengths and weaknesses</p>
         <p style={{ marginTop: 6 }}>
