@@ -1,6 +1,6 @@
 import { boolean, index, integer, jsonb, pgTable, primaryKey, serial, text, timestamp } from "drizzle-orm/pg-core";
 import type { LeagueConfig, StatLine } from "@/types/league";
-import type { EspnSnapshot } from "@/lib/espn";
+import type { EspnSnapshot, SeasonLine } from "@/lib/espn";
 
 export type EspnCache = Pick<EspnSnapshot, "teams" | "rosters" | "currentWeek" | "latestDay">;
 
@@ -96,4 +96,23 @@ export const playerDayStats = pgTable(
     pts: integer("pts").notNull(),
   },
   (t) => [primaryKey({ columns: [t.day, t.playerId] }), index("player_day_stats_week_idx").on(t.week)],
+);
+
+/**
+ * Player season lines, one row per player per source. "espn" is ESPN's season
+ * projection and "espn-actual" is the season so far; any projection file added
+ * later becomes another source and is averaged in.
+ */
+export const playerProjections = pgTable(
+  "player_projections",
+  {
+    source: text("source").notNull(),
+    kind: text("kind").$type<"projection" | "actual">().notNull(),
+    playerId: integer("player_id").notNull(),
+    playerName: text("player_name").notNull(),
+    /** Season totals plus games played (gp). */
+    line: jsonb("line").$type<SeasonLine>().notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+  },
+  (t) => [primaryKey({ columns: [t.source, t.playerId] })],
 );

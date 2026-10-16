@@ -66,6 +66,7 @@ export function AdminApp({ state, edits }: Props) {
           <h1>{config.name} <span>admin</span></h1>
         </div>
         <div className="pills">
+          <Link className="btn" href="/admin/analytics">Analytics</Link>
           <Link className="btn" href="/">View site</Link>
           <form action={logoutAction}><button className="btn" type="submit">Log out</button></form>
         </div>

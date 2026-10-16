@@ -62,7 +62,13 @@ type EspnTeam = {
   roster?: { entries?: EspnRosterEntry[] };
 };
 
+type EspnPoolPlayer = {
+  onTeamId?: number;
+  player?: { id?: number; fullName?: string; proTeamId?: number; stats?: (EspnStatEntry & { id?: string })[] };
+};
+
 export type EspnLeague = {
+  players?: EspnPoolPlayer[];
   scoringPeriodId?: number;
   status?: { currentMatchupPeriod?: number; latestScoringPeriod?: number };
   settings?: { name?: string; scheduleSettings?: { matchupPeriods?: Record<string, number[]> } };
@@ -99,8 +105,8 @@ export type PlayerDay = {
 export type EspnResult<T> = { status: "ok"; data: T } | { status: "private" | "error"; message: string };
 
 /** GET an ESPN league URL, mapping auth and network failures to a status. */
-async function getLeague(query: string): Promise<EspnResult<EspnLeague>> {
-  const headers: Record<string, string> = { Accept: "application/json" };
+async function getLeague(query: string, extraHeaders: Record<string, string> = {}): Promise<EspnResult<EspnLeague>> {
+  const headers: Record<string, string> = { Accept: "application/json", ...extraHeaders };
   // Only needed if the league is ever switched back to private.
   if (process.env.ESPN_S2 && process.env.ESPN_SWID) {
     headers.Cookie = `espn_s2=${process.env.ESPN_S2}; SWID=${process.env.ESPN_SWID}`;
@@ -206,4 +212,61 @@ export function parseDay(raw: EspnLeague, day: number): PlayerDay[] {
     }
   }
   return out;
+}
+
+/** A season stat line plus games played. Totals, not per-game. */
+export type SeasonLine = StatLine & { gp: number };
+
+/** One player from ESPN's player pool, with his season projection and actual stats so far. */
+export type PoolPlayer = {
+  playerId: number;
+  name: string;
+  proTeamId: number;
+  /** ESPN fantasy team that rosters him, or null for a free agent. */
+  onTeamId: number | null;
+  projection: SeasonLine | null;
+  actual: SeasonLine | null;
+};
+
+/** ESPN stat id for games played. */
+const GAMES_PLAYED_STAT = 42;
+/** ESPN keys season stat blocks as "<source><season>": 0 = actual, 1 = projected. */
+const ACTUAL_SEASON_ID = `00${ESPN_SEASON}`;
+const PROJECTED_SEASON_ID = `10${ESPN_SEASON}`;
+/** Comfortably more than every NBA player; ESPN returns them in one response. */
+const POOL_LIMIT = 2000;
+
+/**
+ * Every player's season projection and actual season totals. This is the JSON
+ * ESPN's own projections page reads, so no HTML scraping or paging is needed.
+ */
+export async function fetchPlayerPool(): Promise<EspnResult<PoolPlayer[]>> {
+  const filter = {
+    players: {
+      limit: POOL_LIMIT,
+      offset: 0,
+      sortPercOwned: { sortPriority: 1, sortAsc: false },
+      filterStatsForTopScoringPeriodIds: { value: 2, additionalValue: [ACTUAL_SEASON_ID, PROJECTED_SEASON_ID] },
+    },
+  };
+  const r = await getLeague("view=kona_player_info", { "x-fantasy-filter": JSON.stringify(filter) });
+  return r.status === "ok" ? { status: "ok", data: parsePlayerPool(r.data) } : r;
+}
+
+/** Keep players that have a projection or actual stats; drop the rest of the pool. */
+export function parsePlayerPool(raw: EspnLeague): PoolPlayer[] {
+  const season = (stats: EspnStatEntry[] | undefined, id: string): SeasonLine | null => {
+    const block = stats?.find((s) => (s as { id?: string }).id === id)?.stats;
+    const gp = block?.[String(GAMES_PLAYED_STAT)] ?? 0;
+    if (!block || gp <= 0) return null;
+    return { ...toLine((statId) => block[String(statId)]), gp };
+  };
+  return (raw.players ?? []).flatMap((p) => {
+    const pl = p.player;
+    if (pl?.id === undefined || !pl.fullName) return [];
+    const projection = season(pl.stats, PROJECTED_SEASON_ID);
+    const actual = season(pl.stats, ACTUAL_SEASON_ID);
+    if (!projection && !actual) return [];
+    return [{ playerId: pl.id, name: pl.fullName, proTeamId: pl.proTeamId ?? 0, onTeamId: p.onTeamId || null, projection, actual }];
+  });
 }

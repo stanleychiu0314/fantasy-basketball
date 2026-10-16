@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { isAdmin, logIn, logOut } from "@/lib/auth";
 import { dismissTradeAlert, readConfig, saveManualStats, setPaid, setWeekFinal, syncFromEspn, writeConfig } from "@/lib/league";
 import { cleanConfig, cleanStats } from "@/lib/validate";
+import { refreshProjections } from "@/lib/projections";
 import type { LeagueConfig, StatLine } from "@/types/league";
 
 const MEMBER_KEY = /^d[1-6][ab]$/;
@@ -87,4 +88,12 @@ export async function dismissTradeAlertAction(id: string): Promise<ActionResult>
   await dismissTradeAlert(id);
   refresh();
   return { ok: true, message: "Alert dismissed" };
+}
+
+export async function refreshProjectionsAction(): Promise<ActionResult> {
+  const denied = await guard();
+  if (denied) return denied;
+  const r = await refreshProjections();
+  revalidatePath("/admin/analytics");
+  return r;
 }
