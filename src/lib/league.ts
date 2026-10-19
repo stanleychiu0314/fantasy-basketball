@@ -161,12 +161,16 @@ export async function syncFromEspn(): Promise<{ ok: boolean; message: string }> 
   return { ok: true, message: `Synced ${rows.length} team-weeks and ${playerRows} player-days from ESPN` };
 }
 
-/** Everything the public page needs. Refreshes from ESPN first when data is stale. */
-export async function loadLeagueState(): Promise<LeagueState> {
+/**
+ * Everything the public page needs. Refreshes from ESPN first when data is stale,
+ * unless `sync` is false (admin analytics reads stored data; the public site and
+ * the daily job keep it fresh, and a sync can take seconds).
+ */
+export async function loadLeagueState({ sync = true }: { sync?: boolean } = {}): Promise<LeagueState> {
   if (!db) return loadWithoutDatabase();
 
   const before = await readConfig();
-  if (!before.lastSynced || Date.now() - before.lastSynced.getTime() > SYNC_INTERVAL_MS) {
+  if (sync && (!before.lastSynced || Date.now() - before.lastSynced.getTime() > SYNC_INTERVAL_MS)) {
     // A failed sync should never take the site down; stored data still renders.
     await syncFromEspn().catch(() => undefined);
   }

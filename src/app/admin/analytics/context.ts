@@ -1,7 +1,7 @@
 import "server-only";
 import { loadLeagueState, readConfig } from "@/lib/league";
 import { loadAnalyticsData } from "@/lib/projections";
-import { lineupCap, ratePlayers, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
+import { lineupCap, ratePlayers, tradeIdeas, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters, type TradeIdea } from "@/lib/analytics";
 import { gamesForWeek } from "@/lib/playoffs";
 import { emptyLine, FIELDS, memberKeys } from "@/lib/scoring";
 import { SEASON_START, weekBounds } from "@/lib/season";
@@ -26,7 +26,7 @@ export type AnalyticsContext = {
 
 /** Everything both analytics screens read, loaded once per request. */
 export async function loadAnalyticsContext(): Promise<AnalyticsContext> {
-  const [state, { espnCache }, data] = await Promise.all([loadLeagueState(), readConfig(), loadAnalyticsData()]);
+  const [state, { espnCache }, data] = await Promise.all([loadLeagueState({ sync: false }), readConfig(), loadAnalyticsData()]);
   const me = state.config.duos.find((d) => d.a === ME || d.b === ME) ?? state.config.duos[0];
   const info = {
     sources: data.sources,
@@ -39,6 +39,23 @@ export async function loadAnalyticsContext(): Promise<AnalyticsContext> {
   const rostered = new Set(Object.values(rosters).flat().map((p) => p.id));
   const freeAgents = [...data.meta.entries()].filter(([id, m]) => m.onTeamId === null && !rostered.has(id)).map(([id]) => id);
   return { state, me, info, ready: { rated: ratePlayers(data.players), rosters, meta: data.meta, gameDays: data.gameDays, freeAgents } };
+}
+
+/**
+ * Trades only change when rosters, duos or projections change, so the slow search
+ * runs once per version of that data and reloads reuse it.
+ * shortcut: in-memory, so each new server instance pays the search once; move to the database if that bites.
+ */
+let tradeCache: { key: string; ideas: TradeIdea[] } | null = null;
+
+export function cachedTradeIdeas(ctx: AnalyticsContext): TradeIdea[] {
+  const { ready, state, me, info } = ctx;
+  if (!ready) return [];
+  const key = JSON.stringify([info.updatedAt, ready.rosters, state.config.duos]);
+  if (tradeCache?.key !== key) {
+    tradeCache = { key, ideas: tradeIdeas(state.config.duos, ready.rosters, ready.rated, ready.meta, me) };
+  }
+  return tradeCache.ideas;
 }
 
 /** The weeks that can be opened: this one and the next, as long as the season has them. */

@@ -25,7 +25,8 @@ const FAIR_TOLERANCE = 0.05;
 const LOPSIDED_PENALTY = 0.5;
 /** Gains smaller than this are noise. */
 const MIN_GAIN = 0.03;
-const MAX_TRADE_IDEAS = 8;
+/** Trade ideas listed for each of my managers, so both rosters get suggestions. */
+const TRADES_PER_MANAGER = 5;
 const MAX_IDEAS_PER_PARTNER = 2;
 const MAX_SIDE = 3;
 /** Trade value of a draft pick: pick 1 is 100, and each later pick is worth 3% less. */
@@ -40,7 +41,8 @@ const BALANCE_SHARE = 0.1;
 const BALANCE_MIN_SLACK = 3;
 
 // Pickups
-const MAX_PICKUPS = 8;
+/** Pickups listed for each manager, so both rosters get suggestions. */
+const PICKUPS_PER_MANAGER = 5;
 /** Each manager's lowest-value players considered as drops for a pickup. */
 const DROP_CANDIDATES = 3;
 const TARGETS_PER_CAT = 3;
@@ -352,23 +354,29 @@ export function weekReport(args: {
       .slice(0, DROP_CANDIDATES)
       .map((p) => ({ team, manager, player: p }));
   });
+  // Each manager makes his own moves, so each gets his own list: best drop on his roster per free agent.
   const pickups: Pickup[] = [];
-  for (const id of freeAgents) {
-    const add = rated.get(id);
-    if (!add) continue;
-    let best: { d: (typeof drops)[number]; weekGain: number; swapped: TeamRosters } | null = null;
-    for (const d of drops) {
-      const swapped = { ...rosters, [d.team]: rosters[d.team].map((p) => (p.id === d.player.id ? { id, name: add.name } : p)) };
-      const weekGain = sum(chancesVs(addLines(playedMine, duoTotals(me, swapped, rated, window)), theirs)) - weekBefore;
-      if (!best || weekGain > best.weekGain) best = { d, weekGain, swapped };
+  for (const manager of new Set(drops.map((d) => d.manager))) {
+    const mineOnly: (Omit<Pickup, "seasonGain"> & { swapped: TeamRosters })[] = [];
+    for (const id of freeAgents) {
+      const add = rated.get(id);
+      if (!add) continue;
+      let best: { d: (typeof drops)[number]; weekGain: number; swapped: TeamRosters } | null = null;
+      for (const d of drops.filter((x) => x.manager === manager)) {
+        const swapped = { ...rosters, [d.team]: rosters[d.team].map((p) => (p.id === d.player.id ? { id, name: add.name } : p)) };
+        const weekGain = sum(chancesVs(addLines(playedMine, duoTotals(me, swapped, rated, window)), theirs)) - weekBefore;
+        if (!best || weekGain > best.weekGain) best = { d, weekGain, swapped };
+      }
+      if (!best || best.weekGain <= 0) continue;
+      mineOnly.push({ add, addGames: window.gamesOf(id), drop: rated.get(best.d.player.id)!, dropFrom: manager, weekGain: best.weekGain, swapped: best.swapped });
     }
-    if (!best || best.weekGain <= 0) continue;
-    pickups.push({
-      add, addGames: window.gamesOf(id), drop: rated.get(best.d.player.id)!, dropFrom: best.d.manager, weekGain: best.weekGain,
-      seasonGain: seasonExpectedCats(me.id, allSeasonTotals(duos, best.swapped, rated)) - seasonBefore,
-    });
+    mineOnly.sort((x, y) => y.weekGain - x.weekGain);
+    // The rest-of-season effect is the slow part, so only work it out for the ones shown.
+    for (const p of mineOnly.slice(0, PICKUPS_PER_MANAGER)) {
+      const { swapped, ...shown } = p;
+      pickups.push({ ...shown, seasonGain: seasonExpectedCats(me.id, allSeasonTotals(duos, swapped, rated)) - seasonBefore });
+    }
   }
-  pickups.sort((x, y) => y.weekGain - x.weekGain || y.seasonGain - x.seasonGain);
 
   // Categories I am more likely to lose than win: free agents who add the most of it this week.
   const targets = CATS.flatMap((cat, i) => {
@@ -389,7 +397,7 @@ export function weekReport(args: {
     theirGames: projTheirs.games,
     expectedCats: sum(chances),
     winChance: matchupWinChance(chances),
-    pickups: pickups.slice(0, MAX_PICKUPS),
+    pickups,
     targets,
   };
 }
@@ -449,10 +457,29 @@ export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number,
   const myTeams = [me.espnA, me.espnB].filter((t): t is number => t !== null);
   const totals = allSeasonTotals(duos, rosters, rated);
   const myBefore = seasonExpectedCats(me.id, totals);
+
+  // Speed: this runs ~200k times, so each team's players are sorted by value once and
+  // a trade only merges the incoming players in. In an average week the lineup is
+  // simply the top STARTERS players, each playing GAMES_PER_WEEK games.
+  const ranked = new Map<number, RatedPlayer[]>();
+  for (const team of owner.keys()) {
+    ranked.set(team, (rosters[team] ?? []).filter((p) => !p.ir).flatMap((p) => rated.get(p.id) ?? []).sort((a, b) => b.value - a.value));
+  }
+  const managerTotals = new Map([...ranked].map(([team, list]) => [team, topTotals(list, new Set(), [])]));
+  const duoOf = (d: Duo, swaps: Map<number, StatLine>) => {
+    const out = emptyLine();
+    for (const team of [d.espnA, d.espnB]) {
+      if (team === null) continue;
+      const t = swaps.get(team) ?? managerTotals.get(team)!;
+      for (const f of FIELDS) out[f] += t[f];
+    }
+    return out;
+  };
   const tradeable = (team: number) =>
-    packages((rosters[team] ?? []).filter((p) => !p.ir && rated.has(p.id))).map((ps) => ({
-      players: ps,
-      value: packageValue(ps.map((p) => tradeValue(meta.get(p.id)))),
+    packages(ranked.get(team)!).map((ps) => ({
+      players: [...ps].sort((a, b) => b.value - a.value),
+      ids: new Set(ps.map((p) => p.playerId)),
+      value: packageValue(ps.map((p) => tradeValue(meta.get(p.playerId)))),
     }));
 
   const ideas: TradeIdea[] = [];
@@ -461,29 +488,27 @@ export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number,
     for (const theirTeam of [...owner.keys()].filter((t) => !myTeams.includes(t))) {
       const partner = owner.get(theirTeam)!.duo;
       const theirBefore = seasonExpectedCats(partner.id, totals);
-      const theirs = tradeable(theirTeam);
+      // Sorted by value so each package of mine only scans the balanced window of theirs.
+      const theirs = tradeable(theirTeam).sort((a, b) => a.value - b.value);
       for (const g of mine) {
         for (const t of theirs) {
+          if (t.value > g.value && !balanced(g.value, t.value)) break;
+          if (!balanced(g.value, t.value)) continue;
           const [ng, nt] = [g.players.length, t.players.length];
           if (Math.abs(ng - nt) > 1 || (ng === MAX_SIDE && nt === MAX_SIDE)) continue;
-          if (!balanced(g.value, t.value)) continue;
-          const giving = new Set(g.players.map((p) => p.id));
-          const getting = new Set(t.players.map((p) => p.id));
-          const swapped: TeamRosters = {
-            ...rosters,
-            [myTeam]: [...rosters[myTeam].filter((p) => !giving.has(p.id)), ...t.players],
-            [theirTeam]: [...rosters[theirTeam].filter((p) => !getting.has(p.id)), ...g.players],
-          };
-          const after = new Map(totals);
-          after.set(me.id, duoTotals(me, swapped, rated, AVERAGE_WEEK));
-          after.set(partner.id, duoTotals(partner, swapped, rated, AVERAGE_WEEK));
-          const myGain = seasonExpectedCats(me.id, after) - myBefore;
+          const swaps = new Map([
+            [myTeam, topTotals(ranked.get(myTeam)!, g.ids, t.players)],
+            [theirTeam, topTotals(ranked.get(theirTeam)!, t.ids, g.players)],
+          ]);
+          const myNew = duoOf(me, swaps);
+          const partnerNew = duoOf(partner, swaps);
+          const myGain = expectedVs(myNew, duos, me.id, partner.id, partnerNew, totals) - myBefore;
           if (myGain < MIN_GAIN) continue;
-          const theirGain = seasonExpectedCats(partner.id, after) - theirBefore;
+          const theirGain = expectedVs(partnerNew, duos, partner.id, me.id, myNew, totals) - theirBefore;
           if (theirGain < -FAIR_TOLERANCE) continue;
           ideas.push({
-            give: g.players.map((p) => rated.get(p.id)!), giveFrom: owner.get(myTeam)!.name,
-            get: t.players.map((p) => rated.get(p.id)!), getFrom: owner.get(theirTeam)!.name,
+            give: g.players, giveFrom: owner.get(myTeam)!.name,
+            get: t.players, getFrom: owner.get(theirTeam)!.name,
             partnerDuo: partner, myGain, theirGain, giveValue: g.value, getValue: t.value, rosterChange: nt - ng,
           });
         }
@@ -494,7 +519,7 @@ export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number,
   const appeal = (i: TradeIdea) => i.myGain + i.theirGain - LOPSIDED_PENALTY * Math.abs(i.myGain - i.theirGain);
   const perPartner = new Map<string, number>();
   const seen = new Set<string>();
-  return ideas
+  const picked = ideas
     .sort((x, y) => appeal(y) - appeal(x))
     .filter((i) => {
       // Same incoming players, or the same package sent to the same manager, is a near duplicate.
@@ -506,6 +531,48 @@ export function tradeIdeas(duos: Duo[], rosters: TeamRosters, rated: Map<number,
       seen.add(giveKey);
       perPartner.set(i.getFrom, n + 1);
       return true;
-    })
-    .slice(0, MAX_TRADE_IDEAS);
+    });
+  // Both managers trade, so each gets his own share of the list.
+  const myManagers = myTeams.map((t) => owner.get(t)!.name);
+  return myManagers.flatMap((name) => picked.filter((i) => i.giveFrom === name).slice(0, TRADES_PER_MANAGER));
+}
+
+/**
+ * Expected categories per week for one duo against everyone else, where one other duo
+ * has new totals. Same as seasonExpectedCats without copying the totals map, which
+ * matters inside the trade loop.
+ */
+function expectedVs(mine: StatLine, duos: Duo[], selfId: string, changedId: string, changed: StatLine, totals: Map<string, StatLine>): number {
+  let total = 0;
+  let n = 0;
+  for (const d of duos) {
+    if (d.id === selfId) continue;
+    const opp = d.id === changedId ? changed : totals.get(d.id)!;
+    for (const cat of CATS) total += catWinChance(mine, opp, cat);
+    n++;
+  }
+  return total / (n || 1);
+}
+
+/**
+ * Average-week totals for a manager's top STARTERS players, after removing the ids
+ * in `out` and adding `incoming`. Both lists are sorted best first, so this is a merge.
+ */
+function topTotals(sorted: RatedPlayer[], out: Set<number>, incoming: RatedPlayer[]): StatLine {
+  const total = emptyLine();
+  let i = 0;
+  let j = 0;
+  let taken = 0;
+  while (taken < STARTERS && (i < sorted.length || j < incoming.length)) {
+    let next: RatedPlayer;
+    if (i < sorted.length && out.has(sorted[i].playerId)) {
+      i++;
+      continue;
+    }
+    if (j >= incoming.length || (i < sorted.length && sorted[i].value >= incoming[j].value)) next = sorted[i++];
+    else next = incoming[j++];
+    for (const f of FIELDS) total[f] += next.perGame[f] * GAMES_PER_WEEK;
+    taken++;
+  }
+  return total;
 }

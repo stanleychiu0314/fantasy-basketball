@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 import { isAdmin } from "@/lib/auth";
-import { seasonReport, tradeIdeas } from "@/lib/analytics";
+import { seasonReport } from "@/lib/analytics";
 import { AnalyticsOverview } from "@/components/admin/AnalyticsView";
 import { LoginForm } from "@/components/admin/LoginForm";
-import { loadAnalyticsContext, myGame, openWeeks, weekWindow } from "./context";
+import { cachedTradeIdeas, loadAnalyticsContext, myGame, openWeeks, weekWindow } from "./context";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Gooners analytics", robots: { index: false } };
@@ -13,7 +13,8 @@ const STARTERS = 10;
 // Next.js requires a default export for pages.
 export default async function AnalyticsPage() {
   if (!(await isAdmin())) return <LoginForm />;
-  const { state, me, info, ready } = await loadAnalyticsContext();
+  const ctx = await loadAnalyticsContext();
+  const { state, me, info, ready } = ctx;
   const weeks = openWeeks(state).map((week, i) => ({ week, when: i === 0 ? "This week" : "Next week", game: myGame(state, me, week) }));
   if (!ready) return <AnalyticsOverview me={me} info={info} weeks={weeks} analysis={null} />;
 
@@ -37,7 +38,7 @@ export default async function AnalyticsPage() {
       weeks={weeks}
       analysis={{
         season: seasonReport(state.config.duos, rosters, rated, me),
-        trades: tradeIdeas(state.config.duos, rosters, rated, meta, me),
+        trades: cachedTradeIdeas(ctx),
         roster,
         currentWeek: state.currentWeek,
       }}
