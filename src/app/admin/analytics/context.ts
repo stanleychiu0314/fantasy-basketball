@@ -80,15 +80,14 @@ export function weekWindow(week: number, meta: Map<number, PlayerMeta>, gameDays
   const today = dayOf(Date.now());
   const started = today >= first;
   const from = started ? today + 1 : first;
-  const gamesOf = (playerId: number) => {
+  const days = Array.from({ length: Math.max(0, last - from + 1) }, (_, i) => from + i);
+  const playsOn = (playerId: number, day: number) => {
     const m = meta.get(playerId);
-    if (!m || m.injuryStatus === "OUT") return 0;
-    const schedule = gameDays.get(m.proTeamId);
-    let n = 0;
-    for (let d = from; d <= last; d++) if (schedule?.has(d)) n++;
-    return n;
+    return !!m && m.injuryStatus !== "OUT" && !!gameDays.get(m.proTeamId)?.has(day);
   };
-  return { window: { gamesOf, cap: lineupCap(Math.max(0, last - from + 1)) }, started };
+  const gamesOf = (playerId: number) => days.filter((d) => playsOn(playerId, d)).length;
+  // Day by day: each manager's lineup is set daily, so each day's 10 spots are simulated.
+  return { window: { gamesOf, cap: lineupCap(days.length), days, playsOn }, started };
 }
 
 /** A duo's stats already played this week, from ESPN's live team totals. */

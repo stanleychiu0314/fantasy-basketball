@@ -194,7 +194,17 @@ export type TeamRosters = Record<number, RosterPlayer[]>;
  * How many games each player is expected to play in a window, the lineup's game cap,
  * and optionally the share of games that count by roster rank (best player first).
  */
-export type GameWindow = { gamesOf: (playerId: number) => number; cap: number; rankWeights?: number[] };
+export type GameWindow = {
+  gamesOf: (playerId: number) => number;
+  cap: number;
+  rankWeights?: number[];
+  /**
+   * Day-by-day mode: the game days in the window and who plays on each. When set, each
+   * day's lineup is simulated: everyone playing that day starts, best first, up to 10.
+   */
+  days?: number[];
+  playsOn?: (playerId: number, day: number) => boolean;
+};
 
 /** P(X <= x) for X ~ Binomial(n, p). */
 function binomCdf(n: number, p: number, x: number): number {
@@ -237,6 +247,20 @@ function fillLineup(roster: RosterPlayer[], rated: Map<number, RatedPlayer>, win
     .filter((p) => !p.ir)
     .flatMap((p) => rated.get(p.id) ?? [])
     .sort((a, b) => b.value - a.value);
+  if (window.days && window.playsOn) {
+    // Each day: everyone with a game starts, best first, until the 10 spots are full.
+    const games = new Map<RatedPlayer, number>();
+    for (const day of window.days) {
+      let spots = STARTERS;
+      for (const p of ranked) {
+        if (spots === 0) break;
+        if (!window.playsOn(p.playerId, day)) continue;
+        games.set(p, (games.get(p) ?? 0) + 1);
+        spots--;
+      }
+    }
+    return [...games].map(([p, g]) => ({ p, games: g }));
+  }
   return ranked.flatMap((p, rank) => {
     const games = Math.min(window.gamesOf(p.playerId), left) * (window.rankWeights ? (window.rankWeights[rank] ?? 0) : 1);
     left -= games;

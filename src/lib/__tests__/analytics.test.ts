@@ -137,3 +137,20 @@ describe("bench depth", () => {
     expect(DEPTH_WEIGHTS[12]).toBeCloseTo(0.981, 3);
   });
 });
+
+describe("day-by-day lineups", () => {
+  it("starts everyone who plays each day, up to 10, best first", () => {
+    const players: PlayerInput[] = Array.from({ length: 12 }, (_, i) => ({
+      playerId: i + 1, name: `P${i + 1}`, projections: [season({ pts: 30 - i })], actual: null,
+    }));
+    const rated = ratePlayers(players);
+    const roster = players.map((p) => ({ id: p.playerId, name: p.name }));
+    // Day 1: all 12 play, so the 2 worst sit. Day 2: only player 12 plays, so he starts.
+    const window = { gamesOf: () => 0, cap: 0, days: [1, 2], playsOn: (id: number, day: number) => day === 1 || id === 12 };
+    const t = lineupTotals(roster, rated, window);
+    expect(t.games).toBe(11);
+    expect(t.pts).toBeCloseTo(sum(Array.from({ length: 10 }, (_, i) => 30 - i)) + 19);
+  });
+});
+
+const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
