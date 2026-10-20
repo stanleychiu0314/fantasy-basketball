@@ -190,11 +190,38 @@ export function matchupWinChance(chances: number[]): number {
 
 export type TeamRosters = Record<number, RosterPlayer[]>;
 
-/** How many games each player is expected to play in a window, and the lineup's game cap. */
-export type GameWindow = { gamesOf: (playerId: number) => number; cap: number };
+/**
+ * How many games each player is expected to play in a window, the lineup's game cap,
+ * and optionally the share of games that count by roster rank (best player first).
+ */
+export type GameWindow = { gamesOf: (playerId: number) => number; cap: number; rankWeights?: number[] };
 
-/** The season-long view: every player plays an average week. */
-export const AVERAGE_WEEK: GameWindow = { gamesOf: () => GAMES_PER_WEEK, cap: STARTERS * GAMES_PER_WEEK };
+/** P(X <= x) for X ~ Binomial(n, p). */
+function binomCdf(n: number, p: number, x: number): number {
+  let term = (1 - p) ** n;
+  let total = term;
+  for (let k = 1; k <= Math.min(n, x); k++) {
+    term *= ((n - k + 1) / k) * (p / (1 - p));
+    total += term;
+  }
+  return Math.min(1, total);
+}
+
+const DAYS_PER_WEEK = 7;
+/** An NBA team plays about every other day. */
+const PLAY_CHANCE = GAMES_PER_WEEK / DAYS_PER_WEEK;
+const MAX_ROSTER_RANK = 20;
+
+/**
+ * Season view: the share of a player's games that count, by his rank on the roster.
+ * His game counts unless 10 better teammates also play that day, so the top 10 count
+ * fully and bench players nearly fully (12th: 99%, 13th: 98%). Bench depth matters.
+ * shortcut: treats teams' game days as independent; real busy nights overflow a little more.
+ */
+export const DEPTH_WEIGHTS = Array.from({ length: MAX_ROSTER_RANK }, (_, rank) => binomCdf(rank, PLAY_CHANCE, STARTERS - 1));
+
+/** The season-long view: every active player plays an average week, weighted by roster depth. */
+export const AVERAGE_WEEK: GameWindow = { gamesOf: () => GAMES_PER_WEEK, cap: Infinity, rankWeights: DEPTH_WEIGHTS };
 
 /** Lineup cap for a stretch of days: 10 starters a day. */
 export const lineupCap = (days: number) => STARTERS * days;
@@ -210,8 +237,8 @@ function fillLineup(roster: RosterPlayer[], rated: Map<number, RatedPlayer>, win
     .filter((p) => !p.ir)
     .flatMap((p) => rated.get(p.id) ?? [])
     .sort((a, b) => b.value - a.value);
-  return ranked.flatMap((p) => {
-    const games = Math.min(window.gamesOf(p.playerId), left);
+  return ranked.flatMap((p, rank) => {
+    const games = Math.min(window.gamesOf(p.playerId), left) * (window.rankWeights ? (window.rankWeights[rank] ?? 0) : 1);
     left -= games;
     return games > 0 ? [{ p, games }] : [];
   });
@@ -568,15 +595,16 @@ function expectedVs(mine: StatLine, duos: Duo[], selfId: string, changedId: stri
 }
 
 /**
- * Average-week totals for a manager's top STARTERS players, after removing the ids
- * in `out` and adding `incoming`. Both lists are sorted best first, so this is a merge.
+ * Average-week totals for a manager's players (depth-weighted, as in AVERAGE_WEEK),
+ * after removing the ids in `out` and adding `incoming`. Both lists are sorted best
+ * first, so this is a merge instead of a re-sort.
  */
 function topTotals(sorted: RatedPlayer[], out: Set<number>, incoming: RatedPlayer[]): StatLine {
   const total = emptyLine();
   let i = 0;
   let j = 0;
   let taken = 0;
-  while (taken < STARTERS && (i < sorted.length || j < incoming.length)) {
+  while (taken < DEPTH_WEIGHTS.length && (i < sorted.length || j < incoming.length)) {
     let next: RatedPlayer;
     if (i < sorted.length && out.has(sorted[i].playerId)) {
       i++;
@@ -584,8 +612,29 @@ function topTotals(sorted: RatedPlayer[], out: Set<number>, incoming: RatedPlaye
     }
     if (j >= incoming.length || (i < sorted.length && sorted[i].value >= incoming[j].value)) next = sorted[i++];
     else next = incoming[j++];
-    for (const f of FIELDS) total[f] += next.perGame[f] * GAMES_PER_WEEK;
+    const games = GAMES_PER_WEEK * DEPTH_WEIGHTS[taken];
+    for (const f of FIELDS) total[f] += next.perGame[f] * games;
     taken++;
   }
   return total;
+}
+
+/**
+ * What dropping each of my active players would cost, in expected categories per
+ * average week over the rest of the season (bench depth counted). Lowest = best drop.
+ */
+export function dropCosts(duos: Duo[], rosters: TeamRosters, rated: Map<number, RatedPlayer>, me: Duo): Map<number, number> {
+  const totals = allSeasonTotals(duos, rosters, rated);
+  const before = seasonExpectedCats(me.id, totals);
+  const costs = new Map<number, number>();
+  for (const team of [me.espnA, me.espnB]) {
+    if (team === null) continue;
+    for (const p of rosters[team] ?? []) {
+      if (p.ir || !rated.has(p.id)) continue;
+      const without = { ...rosters, [team]: rosters[team].filter((x) => x.id !== p.id) };
+      const mine = duoTotals(me, without, rated, AVERAGE_WEEK);
+      costs.set(p.id, before - expectedVs(mine, duos, me.id, me.id, mine, totals));
+    }
+  }
+  return costs;
 }

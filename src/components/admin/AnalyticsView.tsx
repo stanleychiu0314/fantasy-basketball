@@ -5,7 +5,7 @@ import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type 
 import { weekRange } from "@/lib/season";
 import { RefreshProjections } from "./RefreshProjections";
 
-type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean };
+type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean; dropCost: number | null };
 type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
 type Overview = { season: SeasonReport; trades: TradeIdea[]; roster: RosterRow[]; currentWeek: number };
@@ -297,6 +297,7 @@ function TradeSection({ trades }: { trades: TradeIdea[] }) {
 }
 
 function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) {
+  const cheapest = Math.min(...roster.flatMap((r) => (r.dropCost === null ? [] : [r.dropCost])));
   return (
     <section className="card">
       <p className="eyebrow">Your roster</p>
@@ -304,7 +305,7 @@ function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) 
         <table>
           <thead>
             <tr>
-              <th>Player</th><th>Role</th><th style={{ textAlign: "right" }}>Wk {week} games</th><th style={{ textAlign: "right" }}>Value</th>
+              <th>Player</th><th>Role</th><th style={{ textAlign: "right" }}>Wk {week} games</th><th style={{ textAlign: "right" }}>Value</th><th style={{ textAlign: "right" }}>Cost to drop</th>
               {CATS.map((c) => <th key={c.key} style={{ textAlign: "right" }}>{c.label}</th>)}
             </tr>
           </thead>
@@ -318,6 +319,7 @@ function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) 
                 <td>{r.ir ? "IR" : r.starter ? "Starter" : "Bench"}</td>
                 <td style={{ textAlign: "right" }} className="num">{r.games}</td>
                 <td style={{ textAlign: "right" }} className="num">{r.player.value.toFixed(1)}</td>
+                <td style={{ textAlign: "right" }} className={`num${r.dropCost !== null && r.dropCost === cheapest ? " lead" : ""}`}>{r.dropCost === null ? "\u2013" : r.dropCost.toFixed(2)}</td>
                 {CATS.map((c) => (
                   <td key={c.key} style={{ textAlign: "right" }} className={`num ${r.player.z[c.key] >= 1 ? "up" : r.player.z[c.key] <= -1 ? "down" : ""}`}>
                     {c.pct
@@ -332,6 +334,8 @@ function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) 
       </div>
       <p className="note" style={{ marginTop: 8 }}>
         Per-game numbers. Value is the sum of 9-category z-scores against the top 156 players. Green and red mark a big plus or minus.
+        Cost to drop is how many expected categories per week you would lose for the rest of the season with him gone and nobody
+        added, bench depth included. The lowest (highlighted) is your best drop.
       </p>
     </section>
   );

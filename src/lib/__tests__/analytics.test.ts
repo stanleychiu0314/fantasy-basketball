@@ -128,3 +128,12 @@ describe("pickups", () => {
     expect(byManager.get(duos[0].b)?.drop).toBeNull();
   });
 });
+
+describe("bench depth", () => {
+  it("counts the top 10 fully and the bench nearly fully", async () => {
+    const { DEPTH_WEIGHTS } = await import("@/lib/analytics");
+    expect(DEPTH_WEIGHTS[9]).toBeCloseTo(1, 6);
+    expect(DEPTH_WEIGHTS[11]).toBeCloseTo(0.994, 3);
+    expect(DEPTH_WEIGHTS[12]).toBeCloseTo(0.981, 3);
+  });
+});

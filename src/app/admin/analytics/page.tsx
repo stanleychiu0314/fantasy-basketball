@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { isAdmin } from "@/lib/auth";
-import { seasonReport } from "@/lib/analytics";
+import { dropCosts, seasonReport } from "@/lib/analytics";
 import { AnalyticsOverview } from "@/components/admin/AnalyticsView";
 import { LoginForm } from "@/components/admin/LoginForm";
 import { cachedTradeIdeas, loadAnalyticsContext, myGame, openWeeks, weekWindow } from "./context";
@@ -20,12 +20,13 @@ export default async function AnalyticsPage() {
 
   const { rated, rosters, meta, gameDays } = ready;
   const { window } = weekWindow(state.currentWeek, meta, gameDays);
+  const costs = dropCosts(state.config.duos, rosters, rated, me);
   const roster = (["a", "b"] as const).flatMap((side) => {
     const team = side === "a" ? me.espnA : me.espnB;
     if (team === null) return [];
     const players = (rosters[team] ?? []).flatMap((p) => {
       const r = rated.get(p.id);
-      return r ? [{ player: r, manager: me[side], ir: !!p.ir, injury: meta.get(p.id)?.injuryStatus ?? "ACTIVE", games: window.gamesOf(p.id) }] : [];
+      return r ? [{ player: r, manager: me[side], ir: !!p.ir, injury: meta.get(p.id)?.injuryStatus ?? "ACTIVE", games: window.gamesOf(p.id), dropCost: costs.get(p.id) ?? null }] : [];
     });
     const starters = new Set(players.filter((p) => !p.ir).sort((x, y) => y.player.value - x.player.value).slice(0, STARTERS).map((p) => p.player.playerId));
     return players.map((p) => ({ ...p, starter: starters.has(p.player.playerId) }));
