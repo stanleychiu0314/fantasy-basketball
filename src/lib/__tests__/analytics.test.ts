@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { blendPerGame, catWinChance, lineupTotals, matchupWinChance, normCdf, packageValue, PRIOR_GAMES, ratePlayers, tradeIdeas, tradeValue, type PlayerInput, type PlayerMeta } from "@/lib/analytics";
+import { blendPerGame, catWinChance, lineupTotals, matchupWinChance, normCdf, packageValue, PRIOR_GAMES, ratePlayers, tradeIdeas, tradeValue, weekReport, type PlayerInput, type PlayerMeta } from "@/lib/analytics";
 import { CATS, emptyLine } from "@/lib/scoring";
 import { defaultConfig } from "@/lib/season";
 import type { StatLine } from "@/types/league";
@@ -98,5 +98,33 @@ describe("trade ideas", () => {
       expect(t.myGain).toBeGreaterThan(0);
       expect(Math.abs(t.give.length - t.get.length)).toBeLessThanOrEqual(1);
     }
+  });
+});
+
+describe("pickups", () => {
+  it("adds without a drop when a manager has an open roster spot, and covers both managers", () => {
+    const config = defaultConfig();
+    const duos = config.duos.map((d, i) => ({ ...d, espnA: i * 2 + 1, espnB: i * 2 + 2 }));
+    const players: PlayerInput[] = [];
+    const rosters: Record<number, { id: number; name: string; ir?: boolean }[]> = {};
+    for (let team = 1; team <= 12; team++) {
+      rosters[team] = [];
+      for (let k = 0; k < 13; k++) {
+        const id = team * 100 + k;
+        players.push({ playerId: id, name: `P${id}`, projections: [season({ pts: 8 + (id % 11), reb: 2 + (id % 5), stl: (id % 3) * 0.5, fgm: 4, fga: 9, ftm: 2, fta: 3 })], actual: null });
+        // Team 2 has one player on IR, leaving an open spot.
+        rosters[team].push({ id, name: `P${id}`, ir: team === 2 && k === 0 });
+      }
+    }
+    const fa = 9999;
+    players.push({ playerId: fa, name: "Free", projections: [season({ pts: 25, reb: 8, stl: 2, fgm: 9, fga: 18, ftm: 5, fta: 6 })], actual: null });
+    const rated = ratePlayers(players);
+    const report = weekReport({
+      duos, rosters, rated, me: duos[0], opponent: duos[1], window: { gamesOf: () => 3, cap: 30 }, freeAgents: [fa],
+      playedMine: emptyLine(), playedTheirs: emptyLine(),
+    });
+    const byManager = new Map(report.pickups.map((p) => [p.dropFrom, p]));
+    expect(byManager.get(duos[0].a)?.drop).not.toBeNull();
+    expect(byManager.get(duos[0].b)?.drop).toBeNull();
   });
 });

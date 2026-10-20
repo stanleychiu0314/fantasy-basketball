@@ -1,6 +1,7 @@
 import type { Duo, StatLine } from "@/types/league";
 import type { RosterPlayer, SeasonLine } from "@/lib/espn";
 import { CATS, FIELDS, catValue, emptyLine, type Category } from "@/lib/scoring";
+import { ROSTER_SIZE } from "@/lib/season";
 
 /**
  * How many games of real stats it takes for a player's actual numbers to count as
@@ -46,6 +47,8 @@ const PICKUPS_PER_MANAGER = 5;
 /** Each manager's lowest-value players considered as drops for a pickup. */
 const DROP_CANDIDATES = 3;
 const TARGETS_PER_CAT = 3;
+/** A pickup that costs more than this many expected categories over the rest of the season is only a stream. */
+const STREAM_THRESHOLD = 0.1;
 
 export type PlayerInput = {
   playerId: number;
@@ -298,12 +301,15 @@ export type CatLine = { cat: Category; mine: number | null; theirs: number | nul
 export type Pickup = {
   add: RatedPlayer;
   addGames: number;
-  drop: RatedPlayer;
+  /** Null when the manager has an open roster spot (e.g. someone moved to IR). */
+  drop: RatedPlayer | null;
   dropFrom: string;
   /** Change in expected categories won this week against this week's opponent. */
   weekGain: number;
   /** Change in expected categories in an average week: the rest-of-season effect. */
   seasonGain: number;
+  /** Helps this week but costs the rest of the season: drop him again after the week. */
+  stream: boolean;
 };
 
 export type CategoryTarget = { cat: Category; winChance: number; players: { player: RatedPlayer; games: number }[] };
@@ -342,40 +348,47 @@ export function weekReport(args: {
   const theirs = addLines(playedTheirs, projTheirs);
   const chances = chancesVs(mine, theirs);
 
-  // Pickups: each free agent in place of each manager's weakest few players; keep his best swap.
-  const seasonBefore = seasonExpectedCats(me.id, allSeasonTotals(duos, rosters, rated));
+  // Pickups. Each manager makes his own moves, so each gets his own list. A manager
+  // with an open roster spot just adds; otherwise each free agent replaces one of his
+  // weakest few players. Ranked by this week's gain plus the rest-of-season gain, so a
+  // one-week stream that hurts the season does not float to the top.
+  const seasonTotals = allSeasonTotals(duos, rosters, rated);
+  const seasonBefore = seasonExpectedCats(me.id, seasonTotals);
   const weekBefore = sum(chances);
-  const drops = [me.espnA, me.espnB].flatMap((team) => {
-    if (team === null) return [];
-    const manager = team === me.espnA ? me.a : me.b;
-    return (rosters[team] ?? [])
-      .filter((p) => !p.ir && rated.has(p.id))
-      .sort((a, b) => rated.get(a.id)!.value - rated.get(b.id)!.value)
-      .slice(0, DROP_CANDIDATES)
-      .map((p) => ({ team, manager, player: p }));
-  });
-  // Each manager makes his own moves, so each gets his own list: best drop on his roster per free agent.
   const pickups: Pickup[] = [];
-  for (const manager of new Set(drops.map((d) => d.manager))) {
-    const mineOnly: (Omit<Pickup, "seasonGain"> & { swapped: TeamRosters })[] = [];
+  for (const team of [me.espnA, me.espnB]) {
+    if (team === null) continue;
+    const manager = team === me.espnA ? me.a : me.b;
+    const roster = rosters[team] ?? [];
+    const openSpot = roster.filter((p) => !p.ir).length < ROSTER_SIZE;
+    const drops: (RosterPlayer | null)[] = openSpot
+      ? [null]
+      : roster
+          .filter((p) => !p.ir && rated.has(p.id))
+          .sort((a, b) => rated.get(a.id)!.value - rated.get(b.id)!.value)
+          .slice(0, DROP_CANDIDATES);
+    const options: Pickup[] = [];
     for (const id of freeAgents) {
       const add = rated.get(id);
       if (!add) continue;
-      let best: { d: (typeof drops)[number]; weekGain: number; swapped: TeamRosters } | null = null;
-      for (const d of drops.filter((x) => x.manager === manager)) {
-        const swapped = { ...rosters, [d.team]: rosters[d.team].map((p) => (p.id === d.player.id ? { id, name: add.name } : p)) };
+      let best: { pickup: Pickup; score: number } | null = null;
+      for (const drop of drops) {
+        const incoming = { id, name: add.name };
+        const changed = drop ? roster.map((p) => (p.id === drop.id ? incoming : p)) : [...roster, incoming];
+        const swapped = { ...rosters, [team]: changed };
         const weekGain = sum(chancesVs(addLines(playedMine, duoTotals(me, swapped, rated, window)), theirs)) - weekBefore;
-        if (!best || weekGain > best.weekGain) best = { d, weekGain, swapped };
+        const seasonMine = duoTotals(me, swapped, rated, AVERAGE_WEEK);
+        const seasonGain = expectedVs(seasonMine, duos, me.id, me.id, seasonMine, seasonTotals) - seasonBefore;
+        const score = weekGain + seasonGain;
+        if (!best || score > best.score) {
+          const pickup = { add, addGames: window.gamesOf(id), drop: drop ? rated.get(drop.id)! : null, dropFrom: manager, weekGain, seasonGain, stream: seasonGain < -STREAM_THRESHOLD };
+          best = { pickup, score };
+        }
       }
-      if (!best || best.weekGain <= 0) continue;
-      mineOnly.push({ add, addGames: window.gamesOf(id), drop: rated.get(best.d.player.id)!, dropFrom: manager, weekGain: best.weekGain, swapped: best.swapped });
+      if (best && best.score > 0) options.push(best.pickup);
     }
-    mineOnly.sort((x, y) => y.weekGain - x.weekGain);
-    // The rest-of-season effect is the slow part, so only work it out for the ones shown.
-    for (const p of mineOnly.slice(0, PICKUPS_PER_MANAGER)) {
-      const { swapped, ...shown } = p;
-      pickups.push({ ...shown, seasonGain: seasonExpectedCats(me.id, allSeasonTotals(duos, swapped, rated)) - seasonBefore });
-    }
+    options.sort((x, y) => y.weekGain + y.seasonGain - (x.weekGain + x.seasonGain));
+    pickups.push(...options.slice(0, PICKUPS_PER_MANAGER));
   }
 
   // Categories I am more likely to lose than win: free agents who add the most of it this week.

@@ -138,10 +138,14 @@ function WeekSection({ week, label, report: w, started }: { week: number; label:
               <thead><tr><th>Add</th><th>Drop</th><th style={{ textAlign: "right" }}>This week</th><th style={{ textAlign: "right" }}>Rest of season</th></tr></thead>
               <tbody>
                 {w.pickups.map((p) => (
-                  <tr key={p.add.playerId}>
-                    <td><b>{p.add.name}</b><div className="note">{p.addGames} games</div></td>
-                    <td>{p.drop.name}<div className="note">{p.dropFrom}</div></td>
-                    <td style={{ textAlign: "right" }} className="num up">{signed(p.weekGain)}</td>
+                  <tr key={`${p.dropFrom}-${p.add.playerId}`}>
+                    <td>
+                      <b>{p.add.name}</b>
+                      {p.stream && <span className="tag verdict weakness" style={{ marginLeft: 6 }}>1-week stream</span>}
+                      <div className="note">{p.addGames} games · for {p.dropFrom}</div>
+                    </td>
+                    <td>{p.drop ? p.drop.name : <span className="note">Nobody · open roster spot</span>}</td>
+                    <td style={{ textAlign: "right" }} className={`num ${p.weekGain >= 0 ? "up" : "down"}`}>{signed(p.weekGain)}</td>
                     <td style={{ textAlign: "right" }} className={`num ${p.seasonGain >= 0 ? "up" : "down"}`}>{signed(p.seasonGain)}</td>
                   </tr>
                 ))}
@@ -150,7 +154,8 @@ function WeekSection({ week, label, report: w, started }: { week: number; label:
           </div>
         )}
         <p className="note" style={{ marginTop: 8 }}>
-          Change in expected categories won. A pickup that helps this week but hurts the rest of the season is a short-term stream.
+          Change in expected categories won. Ranked by this week plus the rest of the season. A &ldquo;1-week stream&rdquo; helps now but
+          costs you later, so drop him again after the week. With an open roster spot (someone moved to IR) there is nothing to drop.
         </p>
       </section>
 
