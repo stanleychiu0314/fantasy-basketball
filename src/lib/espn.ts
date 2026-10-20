@@ -50,7 +50,10 @@ type EspnRosterEntry = {
 
 type EspnSide = {
   teamId: number;
+  /** Totals from finished days only; stays 0 while the day's games are in progress. */
   cumulativeScore?: { scoreByStat?: Record<string, { score: number }> };
+  /** Totals including games in progress, what ESPN's matchup page shows. */
+  cumulativeScoreLive?: { scoreByStat?: Record<string, { score: number }> };
 };
 
 type EspnTeam = {
@@ -178,7 +181,8 @@ export function parseLeague(raw: EspnLeague): EspnSnapshot {
     const week = weekOf(m.matchupPeriodId);
     if (week === null) continue;
     for (const side of [m.home, m.away]) {
-      const byStat = side?.cumulativeScore?.scoreByStat;
+      const live = side?.cumulativeScoreLive?.scoreByStat;
+      const byStat = live && Object.keys(live).length ? live : side?.cumulativeScore?.scoreByStat;
       if (!side || !byStat || Object.keys(byStat).length === 0) continue;
       (stats[week] ??= {})[side.teamId] = toLine((id) => byStat[String(id)]?.score);
     }

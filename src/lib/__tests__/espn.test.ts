@@ -48,3 +48,16 @@ describe("parseLeague", () => {
     expect(snap.latestDay).toBe(8);
   });
 });
+
+describe("live team totals", () => {
+  it("prefers ESPN's live totals, which include games in progress", () => {
+    const snap = parseLeague({
+      teams: [{ id: 1, name: "A" }],
+      schedule: [{
+        matchupPeriodId: 1,
+        home: { teamId: 1, cumulativeScore: { scoreByStat: { "0": { score: 0 } } }, cumulativeScoreLive: { scoreByStat: { "0": { score: 7 } } } },
+      }],
+    });
+    expect(snap.stats[1][1].pts).toBe(7);
+  });
+});

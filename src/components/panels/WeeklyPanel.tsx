@@ -104,7 +104,7 @@ function DuoBox({ duo, rows }: { duo: Duo; rows: PlayerWeek[] }) {
             </thead>
             <tbody>
               {sorted.map((p, i) => (
-                <tr key={p.playerId} className={i === 0 ? "top" : ""}>
+                <tr key={p.playerId} className={i === 0 ? "best" : ""}>
                   <td className="pn">{p.name}<small>{manager(p.member)}</small></td>
                   <td className="num">{p.games}</td>
                   <td className="num">{p.pts}</td>
