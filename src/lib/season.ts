@@ -58,6 +58,58 @@ export function spanRange(fromWeek: number, toWeek: number): string {
   return `${MONTHS[a.getUTCMonth()]} ${a.getUTCDate()} to ${sameMonth ? "" : MONTHS[b.getUTCMonth()] + " "}${b.getUTCDate()}`;
 }
 
+const NY_ZONE = "America/New_York";
+const MS_PER_MINUTE = 60_000;
+const MS_PER_HOUR = 3_600_000;
+/** A finished week reads "Final (pending)" from this local time on its last day. */
+const PENDING_HOUR = 23;
+const PENDING_MINUTE = 59;
+/** The daily cron (vercel.json) runs at this UTC hour; the Monday run locks the week. */
+const SYNC_HOUR_UTC = 10;
+
+const nyFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: NY_ZONE,
+  hourCycle: "h23",
+  year: "numeric",
+  month: "numeric",
+  day: "numeric",
+  hour: "numeric",
+  minute: "numeric",
+});
+
+/** New York's UTC offset in ms at a UTC instant (negative: -4h in EDT, -5h in EST). */
+function nyOffset(utcMs: number): number {
+  const p = Object.fromEntries(nyFormat.formatToParts(utcMs).map((x) => [x.type, Number(x.value)]));
+  const asUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute);
+  return asUtc - Math.floor(utcMs / MS_PER_MINUTE) * MS_PER_MINUTE;
+}
+
+/** The UTC instant at which New York's wall clock reads the given date and time. */
+function nyWallToUtc(dateUtcMs: number, hour: number, minute: number): number {
+  const d = new Date(dateUtcMs);
+  const guess = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate(), hour, minute);
+  // Re-check the offset at the first answer so a guess on the wrong side of a DST change self-corrects.
+  return guess - nyOffset(guess - nyOffset(guess));
+}
+
+/**
+ * Where a matchup week is in its life. A week starts at 00:00 New York time on its first
+ * day and reads "pending" from 23:59 New York time on its last day (late West Coast games
+ * are still being counted) until the Monday sync marks it `final`.
+ */
+export function weekPhase(week: number, final: boolean, now = Date.now()): "upcoming" | "live" | "pending" | "final" {
+  if (final) return "final";
+  const [first, last] = weekBounds(week);
+  if (now < nyWallToUtc(first, 0, 0)) return "upcoming";
+  if (now >= nyWallToUtc(last, PENDING_HOUR, PENDING_MINUTE)) return "pending";
+  return "live";
+}
+
+/** When a week locks as final without ESPN moving on: Monday 10:00 UTC after its last day. */
+export function weekLockTime(week: number): number {
+  return weekBounds(week)[1] + MS_PER_DAY + SYNC_HOUR_UTC * MS_PER_HOUR;
+}
+
 /** Which matchup week the calendar says it is right now, clamped to the season. */
 export function weekFromDate(now = Date.now(), weeks = SEASON_WEEKS): number {
   for (let w = 1; w <= weeks; w++) {

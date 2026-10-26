@@ -3,7 +3,7 @@ import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import type { EspnCache } from "@/lib/db/schema";
 import { fetchDay, fetchEspn, type EspnSnapshot, type RosterPlayer } from "@/lib/espn";
-import { defaultConfig, normalizeConfig, SEASON_START, weekBounds, weekFromDate } from "@/lib/season";
+import { defaultConfig, normalizeConfig, SEASON_START, weekFromDate, weekLockTime } from "@/lib/season";
 import { FIELDS, memberKeys } from "@/lib/scoring";
 import { detectTeammateMoves } from "@/lib/trades";
 import type { LeagueConfig, LeagueState, MemberKey, PlayerWeek, RosterEntry, ScoreEdit, StatLine } from "@/types/league";
@@ -14,8 +14,6 @@ const SYNC_INTERVAL_MS = 5 * 60_000;
 /** Cap on game days fetched per sync, so one request never runs long. Backfill continues next sync. */
 const MAX_DAYS_PER_SYNC = 7;
 const MS_PER_DAY = 86_400_000;
-/** Days after a week ends before it locks as final without ESPN moving on. */
-const FINAL_AFTER_MS = 2 * MS_PER_DAY;
 
 /** In-memory ESPN cache, used only when no database is connected (local preview). */
 let memo: { at: number; snap: EspnSnapshot | null; status: LeagueState["espnStatus"] } | null = null;
@@ -104,12 +102,12 @@ export async function syncFromEspn(): Promise<{ ok: boolean; message: string }> 
       });
   }
 
-  // 2. A week is final once ESPN has moved past it, or once it ended a couple of
-  // days ago (ESPN never moves past the last week, and stat corrections land within a day).
+  // 2. A week is final once ESPN has moved past it, or at the first sync after the Monday
+  // 10:00 UTC lock (ESPN never moves past the last week, and late West Coast games are in by then).
   const now = Date.now();
   const finished = Object.keys(snap.stats)
     .map(Number)
-    .filter((w) => (snap.currentWeek !== null && w < snap.currentWeek) || weekBounds(w)[1] + FINAL_AFTER_MS < now);
+    .filter((w) => (snap.currentWeek !== null && w < snap.currentWeek) || now >= weekLockTime(w));
   if (finished.length) {
     await db.insert(schema.weekStatus).values(finished.map((week) => ({ week, final: true }))).onConflictDoNothing();
   }

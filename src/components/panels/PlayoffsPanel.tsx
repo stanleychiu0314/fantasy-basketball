@@ -1,7 +1,7 @@
 import type { LeagueState } from "@/types/league";
 import { matchup } from "@/lib/scoring";
 import { PLAYOFF_SPOTS, type Bracket, type Game } from "@/lib/playoffs";
-import { weekRange } from "@/lib/season";
+import { weekPhase, weekRange } from "@/lib/season";
 
 type Props = { state: LeagueState; bracket: Bracket; onWeek: (w: number) => void };
 
@@ -151,7 +151,7 @@ function BracketGame({ state, week, game, tbd, stakes, onWeek }: GameProps) {
       <p className="lbl">
         {game.label}
         {stakes ? <span className="stakes"> {stakes}</span> : null}
-        {m?.played && !game.winner ? " · live" : ""}
+        {m?.played && !game.winner && weekPhase(week, !!state.final[week]) === "live" ? " · live" : ""}
       </p>
       {side(game.a, game.seedA, m?.winsA, tbd[0])}
       {side(game.b, game.seedB, m?.winsB, tbd[1])}

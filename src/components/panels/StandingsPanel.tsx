@@ -4,7 +4,7 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import type { LeagueState } from "@/types/league";
 import { CATS, computeStandings, duoSubtitle, matchup, type Standings } from "@/lib/scoring";
 import { gamesForWeek, PLAYOFF_SPOTS, weekLabel } from "@/lib/playoffs";
-import { weekRange } from "@/lib/season";
+import { weekPhase, weekRange } from "@/lib/season";
 
 type Props = { state: LeagueState; standings: Standings; onWeek: (w: number) => void };
 
@@ -16,6 +16,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
   const { rows, lastPlayed } = standings;
   const cw = state.currentWeek;
   const ranked = lastPlayed > 0;
+  const phase = weekPhase(cw, !!state.final[cw]);
 
   // Rank as of the previous scored week, for the movement arrows.
   const prevRank = useMemo(() => {
@@ -74,7 +75,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
                 </span>
                 <span className={`nm r${m.played && m.winsB > m.winsA ? " w" : ""}`}>{B.name}</span>
                 <span className="st">
-                  {!m.played ? "Not scored yet" : state.final[cw] ? "Final" : (<span className="state live"><span className="dot" />Live</span>)}
+                  {!m.played ? "Not scored yet" : phase === "final" ? "Final" : phase === "pending" ? "Final (pending)" : (<span className="state live"><span className="dot" />Live</span>)}
                   {m.ties ? ` · ${m.ties} tied` : ""}
                 </span>
               </button>
@@ -85,7 +86,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
 
       <div className="board" ref={tableRef}>
         <div className="row head">
-          <span>#</span><span>Duo</span><span>W-L-T</span><span>Pct</span><span className="hs">Cats</span><span className="hs">Last 5</span>
+          <span>#</span><span>Duo</span><span>W-L-T</span><span>Pct</span><span className="hs">Last 5</span>
         </div>
         {rows.map((r) => {
           const prev = prevRank?.get(r.duo.id);
@@ -99,9 +100,8 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
                 {ranked && (delta > 0 ? <small className="up">▲{delta}</small> : delta < 0 ? <small className="down">▼{-delta}</small> : <small className="flat">-</small>)}
               </span>
               <span className="nm">{r.duo.name}{sub && <small>{sub}</small>}</span>
-              <span className="rec">{r.w}-{r.l}-{r.t}</span>
+              <span className="rec">{r.w}-{r.l}-{r.t}<span className="cats"> · {r.catW}-{r.catL}-{r.catT} cats</span></span>
               <span className="c">{r.played ? r.pct.toFixed(3).replace(/^0/, "") : ".000"}</span>
-              <span className="c hs">{r.catW}-{r.catL}-{r.catT}</span>
               <span className="hs">
                 {r.results.length ? (
                   <span className="chips">{r.results.slice(-LAST_N).map((x, i) => <i key={i} className={`ch ${x}`}>{x}</i>)}</span>

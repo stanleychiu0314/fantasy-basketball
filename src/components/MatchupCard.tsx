@@ -1,4 +1,5 @@
 import type { Duo, LeagueState } from "@/types/league";
+import { weekPhase } from "@/lib/season";
 import { duoSubtitle, formatValue, matchup } from "@/lib/scoring";
 
 const HALF = 50;
@@ -21,9 +22,10 @@ const seedTag = (seed?: number) => (seed ? <span className="seed">{seed}</span> 
 export function MatchupCard({ state, week, A, B, label, seedA, seedB }: Props) {
   const m = matchup(state.scores, week, A, B);
   const win = !m.played ? "" : m.winsA > m.winsB ? "A" : m.winsA < m.winsB ? "B" : "T";
+  const phase = weekPhase(week, !!state.final[week]);
   const status = !m.played
     ? m.partial ? "Waiting on one side" : "Not scored"
-    : state.final[week] ? "Final" : null;
+    : phase === "final" ? "Final" : phase === "pending" ? "Final (pending)" : null;
 
   return (
     <article className={`mc${m.played ? "" : " idle"}${label ? " po" : ""}`}>

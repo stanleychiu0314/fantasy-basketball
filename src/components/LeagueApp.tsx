@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { LeagueState } from "@/types/league";
 import { computeStandings } from "@/lib/scoring";
 import { computeBracket, weekHasData, weekLabel } from "@/lib/playoffs";
-import { weekRange } from "@/lib/season";
+import { weekPhase, weekRange } from "@/lib/season";
 import { RulesPanel } from "./panels/RulesPanel";
 import { StakesPanel } from "./panels/StakesPanel";
 import { StandingsPanel } from "./panels/StandingsPanel";
@@ -36,7 +36,10 @@ export function LeagueApp({ state }: { state: LeagueState }) {
   const standings = useMemo(() => computeStandings(state), [state]);
   const bracket = useMemo(() => computeBracket(state), [state]);
   const phase = weekLabel(state, state.currentWeek);
-  const live = weekHasData(state, state.currentWeek) && !state.final[state.currentWeek];
+  const hasData = weekHasData(state, state.currentWeek);
+  const wp = weekPhase(state.currentWeek, !!state.final[state.currentWeek]);
+  const live = hasData && wp === "live";
+  const pending = hasData && wp === "pending";
 
   useEffect(() => {
     const syncFromHash = () => {
@@ -88,7 +91,7 @@ export function LeagueApp({ state }: { state: LeagueState }) {
           <div className="pills">
             <span className={`pill${live ? " live" : ""}`}>
               {live && <span className="dot" />}
-              {live ? "Live " : ""}{phase ? `${phase} · ` : ""}Week {state.currentWeek} of {state.config.weeks} · {weekRange(state.currentWeek)}
+              {live ? "Live " : pending ? "Final (pending) " : ""}{phase ? `${phase} · ` : ""}Week {state.currentWeek} of {state.config.weeks} · {weekRange(state.currentWeek)}
             </span>
             <span className="sync" suppressHydrationWarning>
               {state.espnStatus === "ok" && synced

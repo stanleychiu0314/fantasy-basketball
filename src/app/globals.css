@@ -121,7 +121,7 @@ ul.clean b{color:var(--fg)}
 
 /* standings */
 .board{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
-.row{display:grid;grid-template-columns:2.6rem minmax(0,1fr) 5.2rem 3.6rem 5.4rem 7rem;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
+.row{display:grid;grid-template-columns:2.6rem minmax(0,1fr) 15rem 3.6rem 7rem;gap:8px;align-items:center;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--surface)}
 .row:last-child{border-bottom:0}
 .row.head{font-size:11px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted);font-weight:700;padding-block:10px;background:var(--surface2)}
 .row .rk{font-family:var(--display);font-weight:900;font-size:1.9rem;line-height:1}
@@ -129,14 +129,15 @@ ul.clean b{color:var(--fg)}
 .up{color:var(--win)} .down{color:var(--loss)} .flat{color:var(--muted)}
 .row .nm{font-weight:700;line-height:1.25}
 .row .nm small{display:block;color:var(--muted);font-weight:500;font-size:12.5px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.row .rec{font-family:var(--display);font-weight:800;font-size:1.35rem;font-variant-numeric:tabular-nums}
+.row .rec{white-space:nowrap;font-family:var(--display);font-weight:800;font-size:1.35rem;font-variant-numeric:tabular-nums}
+.row .rec .cats{font-weight:400;color:var(--muted)}
 .row .c{font-variant-numeric:tabular-nums;color:var(--muted)}
 .chips{display:flex;gap:3px}
 .ch{width:18px;height:18px;border-radius:5px;font-size:10px;font-weight:800;font-style:normal;display:grid;place-items:center;color:var(--bg)}
 .ch.W{background:var(--win)}.ch.L{background:var(--loss)}.ch.T{background:var(--tie)}
 .row.top1 .rk{color:var(--gold)}
 .row.zone .rk{color:var(--loss)}
-@media (max-width:700px){.row{grid-template-columns:2.4rem minmax(0,1fr) 4.6rem 3.2rem}.row .hs{display:none}}
+@media (max-width:700px){.row{grid-template-columns:2.2rem minmax(0,1fr) 7.6rem 2.8rem;gap:6px;padding-inline:12px}.row .rec{font-size:1.05rem;line-height:1.15}.row .rec .cats{display:block}.row .hs{display:none}}
 .heat{display:grid;grid-template-columns:minmax(110px,1.4fr) repeat(9,minmax(44px,1fr)) minmax(52px,.8fr);gap:4px;min-width:640px;align-items:stretch}
 .heat>div{padding:8px 4px;text-align:center;font-variant-numeric:tabular-nums;border-radius:8px;background:var(--surface2)}
 .heat .hd{background:transparent;font-size:11px;letter-spacing:.08em;font-weight:700;color:var(--muted);text-transform:uppercase}

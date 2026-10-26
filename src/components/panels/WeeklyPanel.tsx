@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import type { Duo, LeagueState, PlayerWeek } from "@/types/league";
 import { memberKeys } from "@/lib/scoring";
 import { gamesForWeek, weekHasData, weekLabel } from "@/lib/playoffs";
-import { weekRange } from "@/lib/season";
+import { weekPhase, weekRange } from "@/lib/season";
 import { MatchupCard, PendingCard } from "../MatchupCard";
 import { WeekChips } from "../WeekChips";
 
@@ -14,7 +14,8 @@ type Players = { week: number; rows: PlayerWeek[] } | null;
 /** The three duo matchups for one week, plus each duo's player box score. */
 export function WeeklyPanel({ state, week, onWeek }: Props) {
   const phase = weekLabel(state, week);
-  const status = state.final[week] ? "Final" : weekHasData(state, week) ? "Live" : "Not started";
+  const wp = weekPhase(week, !!state.final[week]);
+  const status = wp === "final" ? "Final" : !weekHasData(state, week) ? "Not started" : wp === "pending" ? "Final (pending)" : wp === "live" ? "Live" : "Not started";
   const corrected = state.manual.filter((m) => m.week === week).length;
 
   const [players, setPlayers] = useState<Players>(null);
