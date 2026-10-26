@@ -6,6 +6,7 @@ import { isAdmin, logIn, logOut } from "@/lib/auth";
 import { dismissTradeAlert, readConfig, saveManualStats, setPaid, setWeekFinal, syncFromEspn, writeConfig } from "@/lib/league";
 import { cleanConfig, cleanStats } from "@/lib/validate";
 import { refreshProjections } from "@/lib/projections";
+import { computeTrades, computeWeekMoves } from "@/lib/snapshots";
 import type { LeagueConfig, StatLine } from "@/types/league";
 
 const MEMBER_KEY = /^d[1-6][ab]$/;
@@ -96,4 +97,21 @@ export async function refreshProjectionsAction(): Promise<ActionResult> {
   const r = await refreshProjections();
   revalidatePath("/admin/analytics");
   return r;
+}
+
+export async function recomputeWeekMovesAction(week: number): Promise<ActionResult> {
+  const denied = await guard();
+  if (denied) return denied;
+  if (!Number.isInteger(week) || week < 1 || week > MAX_WEEK) return { ok: false, message: "That week does not exist." };
+  const { ok, message } = await computeWeekMoves(week);
+  revalidatePath("/admin/analytics", "layout");
+  return { ok, message };
+}
+
+export async function recomputeTradesAction(): Promise<ActionResult> {
+  const denied = await guard();
+  if (denied) return denied;
+  const { ok, message } = await computeTrades();
+  revalidatePath("/admin/analytics", "layout");
+  return { ok, message };
 }

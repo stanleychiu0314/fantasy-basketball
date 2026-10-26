@@ -4,16 +4,22 @@ import { CATS, formatValue } from "@/lib/scoring";
 import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type WeekReport } from "@/lib/analytics";
 import { weekRange } from "@/lib/season";
 import { RefreshProjections } from "./RefreshProjections";
+import { RecomputeButton } from "./RecomputeButton";
 
 type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean; dropCost: number | null };
 type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
-type Overview = { season: SeasonReport; trades: TradeIdea[]; roster: RosterRow[]; currentWeek: number };
+type Overview = { season: SeasonReport; trades: TradeIdea[]; tradesAsOf: string | null; roster: RosterRow[]; currentWeek: number };
 
 const PERCENT = 100;
 const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
 const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
 const names = (ps: RatedPlayer[]) => ps.map((p) => p.name).join(" + ");
+
+/** When a saved snapshot was computed, so stale suggestions are obvious. */
+function AsOf({ asOf }: { asOf: string | null }) {
+  return <p className="note" style={{ marginTop: 6 }}>{asOf ? `As of ${new Date(asOf).toLocaleString()}` : "Not computed yet"}</p>;
+}
 
 function Meter({ value }: { value: number }) {
   return (
@@ -70,7 +76,7 @@ export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info
       ) : (
         <>
           <SeasonSection season={analysis.season} me={me} />
-          <TradeSection trades={analysis.trades} />
+          <TradeSection trades={analysis.trades} asOf={analysis.tradesAsOf} />
           <RosterSection roster={analysis.roster} week={analysis.currentWeek} />
         </>
       )}
@@ -79,7 +85,7 @@ export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info
 }
 
 /** One week's matchup screen: the projection against that week's opponent, then pickups. */
-export function WeekMatchup(props: { me: Duo; week: number; when: string; label: string; report: WeekReport | null; started: boolean }) {
+export function WeekMatchup(props: { me: Duo; week: number; when: string; label: string; report: WeekReport | null; started: boolean; asOf: string | null }) {
   return (
     <div className="wrap adm">
       <TopBar me={props.me} eyebrow={props.when} back={{ href: "/admin/analytics", label: "Back to overview" }} />
@@ -88,7 +94,7 @@ export function WeekMatchup(props: { me: Duo; week: number; when: string; label:
   );
 }
 
-function WeekSection({ week, label, report: w, started }: { week: number; label: string; report: WeekReport | null; started: boolean }) {
+function WeekSection({ week, label, report: w, started, asOf }: { week: number; label: string; report: WeekReport | null; started: boolean; asOf: string | null }) {
   const title = `${label ? `${label} · ` : ""}Week ${week} · ${weekRange(week)}`;
   if (!w) {
     return (
@@ -130,6 +136,8 @@ function WeekSection({ week, label, report: w, started }: { week: number; label:
 
       <section className="card">
         <p className="eyebrow">Pickups for this week</p>
+        <AsOf asOf={asOf} />
+        <RecomputeButton week={week} />
         {w.pickups.length === 0 ? (
           <p className="note" style={{ marginTop: 6 }}>No free agent beats anyone on your rosters this week.</p>
         ) : (
@@ -256,10 +264,12 @@ function SeasonSection({ season, me }: { season: SeasonReport; me: Duo }) {
   );
 }
 
-function TradeSection({ trades }: { trades: TradeIdea[] }) {
+function TradeSection({ trades, asOf }: { trades: TradeIdea[]; asOf: string | null }) {
   return (
     <section className="card">
       <p className="eyebrow">Trade ideas</p>
+      <AsOf asOf={asOf} />
+      <RecomputeButton />
       <p className="note" style={{ marginTop: 6 }}>
         1 to 3 players a side. Each package is priced by where its players went in your league&apos;s draft, so both sides are
         worth about the same. Ideas where both duos gain about equally come first, since those get accepted. Trades with

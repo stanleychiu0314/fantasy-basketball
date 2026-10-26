@@ -149,3 +149,15 @@ export const nbaGames = pgTable(
   },
   (t) => [primaryKey({ columns: [t.proTeamId, t.day] })],
 );
+
+/**
+ * Analytics saved by the cron so pages read them instead of recomputing per request.
+ * key is "week_moves:<week>" or "trades"; data is plain JSON (no Maps).
+ */
+export const analyticsSnapshots = pgTable("analytics_snapshots", {
+  key: text("key").primaryKey(),
+  kind: text("kind").$type<"week_moves" | "trades">().notNull(),
+  week: integer("week"),
+  computedAt: timestamp("computed_at", { withTimezone: true }).notNull(),
+  data: jsonb("data").notNull(),
+});

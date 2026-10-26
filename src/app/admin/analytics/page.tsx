@@ -3,7 +3,8 @@ import { isAdmin } from "@/lib/auth";
 import { dropCosts, seasonReport } from "@/lib/analytics";
 import { AnalyticsOverview } from "@/components/admin/AnalyticsView";
 import { LoginForm } from "@/components/admin/LoginForm";
-import { cachedTradeIdeas, loadAnalyticsContext, myGame, openWeeks, weekWindow } from "./context";
+import { loadAnalyticsContext, myGame, openWeeks, weekWindow } from "@/lib/analytics-context";
+import { loadTrades } from "@/lib/snapshots";
 
 export const dynamic = "force-dynamic";
 export const metadata: Metadata = { title: "Gooners analytics", robots: { index: false } };
@@ -31,6 +32,7 @@ export default async function AnalyticsPage() {
     const starters = new Set(players.filter((p) => !p.ir).sort((x, y) => y.player.value - x.player.value).slice(0, STARTERS).map((p) => p.player.playerId));
     return players.map((p) => ({ ...p, starter: starters.has(p.player.playerId) }));
   });
+  const trades = await loadTrades(ctx);
 
   return (
     <AnalyticsOverview
@@ -39,7 +41,8 @@ export default async function AnalyticsPage() {
       weeks={weeks}
       analysis={{
         season: seasonReport(state.config.duos, rosters, rated, me),
-        trades: cachedTradeIdeas(ctx),
+        trades: trades?.data ?? [],
+        tradesAsOf: trades?.computedAt.toISOString() ?? null,
         roster,
         currentWeek: state.currentWeek,
       }}

@@ -1,10 +1,10 @@
 import "server-only";
 import { loadLeagueState, readConfig } from "@/lib/league";
-import { loadAnalyticsData } from "@/lib/projections";
-import { lineupCap, ratePlayers, tradeIdeas, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters, type TradeIdea } from "@/lib/analytics";
+import { loadAnalyticsData, type AnalyticsData } from "@/lib/projections";
+import { lineupCap, ratePlayers, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
 import { gamesForWeek } from "@/lib/playoffs";
 import { emptyLine, FIELDS, memberKeys } from "@/lib/scoring";
-import { SEASON_START, weekBounds } from "@/lib/season";
+import { SEASON_START, weekBounds, weekFromDate } from "@/lib/season";
 import type { Duo, LeagueState, StatLine } from "@/types/league";
 
 /** The analytics pages are Stanley's: they always analyze the duo he is in. */
@@ -21,7 +21,15 @@ export type AnalyticsContext = {
   me: Duo;
   info: DataInfo;
   /** Null until projections are stored and ESPN rosters have synced. */
-  ready: { rated: Map<number, RatedPlayer>; rosters: TeamRosters; meta: Map<number, PlayerMeta>; gameDays: Map<number, Set<number>>; freeAgents: number[] } | null;
+  ready: {
+    rated: Map<number, RatedPlayer>;
+    rosters: TeamRosters;
+    meta: Map<number, PlayerMeta>;
+    gameDays: Map<number, Set<number>>;
+    games: AnalyticsData["games"];
+    abbrevs: Map<number, string>;
+    freeAgents: number[];
+  } | null;
 };
 
 /** Everything both analytics screens read, loaded once per request. */
@@ -38,28 +46,18 @@ export async function loadAnalyticsContext(): Promise<AnalyticsContext> {
   if (!data.players.length || !rosters) return { state, me, info, ready: null };
   const rostered = new Set(Object.values(rosters).flat().map((p) => p.id));
   const freeAgents = [...data.meta.entries()].filter(([id, m]) => m.onTeamId === null && !rostered.has(id)).map(([id]) => id);
-  return { state, me, info, ready: { rated: ratePlayers(data.players), rosters, meta: data.meta, gameDays: data.gameDays, freeAgents } };
-}
-
-/**
- * Trades only change when rosters, duos or projections change, so the slow search
- * runs once per version of that data and reloads reuse it.
- * shortcut: in-memory, so each new server instance pays the search once; move to the database if that bites.
- */
-let tradeCache: { key: string; ideas: TradeIdea[] } | null = null;
-
-export function cachedTradeIdeas(ctx: AnalyticsContext): TradeIdea[] {
-  const { ready, state, me, info } = ctx;
-  if (!ready) return [];
-  const key = JSON.stringify([info.updatedAt, ready.rosters, state.config.duos]);
-  if (tradeCache?.key !== key) {
-    tradeCache = { key, ideas: tradeIdeas(state.config.duos, ready.rosters, ready.rated, ready.meta, me) };
-  }
-  return tradeCache.ideas;
+  return { state, me, info, ready: { rated: ratePlayers(data.players), rosters, meta: data.meta, gameDays: data.gameDays, games: data.games, abbrevs: data.abbrevs, freeAgents } };
 }
 
 /** The weeks that can be opened: this one and the next, as long as the season has them. */
-export const openWeeks = (state: LeagueState) => [state.currentWeek, state.currentWeek + 1].filter((w) => w <= state.config.weeks);
+/**
+ * This week and next, from the calendar (an admin override still wins). Not ESPN's
+ * current week: on Monday morning ESPN can still report last week as current.
+ */
+export function openWeeks(state: LeagueState, now = Date.now()): number[] {
+  const thisWeek = state.config.currentWeekOverride ?? weekFromDate(now, state.config.weeks);
+  return [thisWeek, thisWeek + 1].filter((w) => w <= state.config.weeks);
+}
 
 /** My game in a week (regular season or bracket) and its label, if I have one. */
 export function myGame(state: LeagueState, me: Duo, week: number): { opponent: Duo; label: string } | null {
@@ -71,15 +69,21 @@ export function myGame(state: LeagueState, me: Duo, week: number): { opponent: D
 /**
  * Games each player has left in a week. Before the week starts that is the whole
  * week; during it, only days after today, because today's games are already in
- * ESPN's live totals. Players listed OUT are counted for zero.
+ * ESPN's live totals. Players listed OUT are counted for zero. With `full`, every
+ * day of the week counts, as if it had not started (what the saved week moves use).
  */
-export function weekWindow(week: number, meta: Map<number, PlayerMeta>, gameDays: Map<number, Set<number>>): { window: GameWindow; started: boolean } {
+export function weekWindow(
+  week: number,
+  meta: Map<number, PlayerMeta>,
+  gameDays: Map<number, Set<number>>,
+  { full = false }: { full?: boolean } = {},
+): { window: GameWindow; started: boolean } {
   const [start, end] = weekBounds(week);
   const first = dayOf(start);
   const last = dayOf(end);
   const today = dayOf(Date.now());
   const started = today >= first;
-  const from = started ? today + 1 : first;
+  const from = started && !full ? today + 1 : first;
   const days = Array.from({ length: Math.max(0, last - from + 1) }, (_, i) => from + i);
   const playsOn = (playerId: number, day: number) => {
     const m = meta.get(playerId);
