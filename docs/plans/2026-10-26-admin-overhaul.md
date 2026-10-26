@@ -121,3 +121,5 @@ Round 3: done, pushed under the standing OK for display changes.
 | R14 | Owner column: every duo gets its own color, and every owner shows as a pill in that color (6 duos). Free agents get a neutral pill. Keep the row tint for Smashing Balls. |
 | R15 | Heat-map background on every stat cell, from that category's z-score this week: z >= +2 is the strongest green, fading to no color at 0, then to red at z <= -2. TO is inverted (fewer is greener). The same colors in light and dark themes, with readable text. |
 | R16 | Sticky header row when scrolling down, and on phones the #, Player, Owner and Games columns stay pinned while stats scroll sideways. |
+
+Round 4: done and pushed. Games-played counts now skip all-zero ESPN rows (src/lib/games-played.ts). League tab shows rostered players only (free agents not stored).
