@@ -110,3 +110,5 @@ Round 2: done locally, commit efc4cf5, 72 tests pass. Waiting on Stanley to appr
 | R10 | Overview You vs Adam: add games played by Stanley and by Adam per week, in monthly subtotals and in the season total (active lineup games from player_day_stats). |
 | R11 | Week screen Rosters tab gets two sub-tabs: **Stats** (exactly what it shows today) and **Schedule**. Schedule: two columns, ours (Stanley + Adam) on the left, opponent duo on the right; one row per player ordered by this league's draft pick; columns Mon to Sun of that week; "P" if he plays that day, "-" if not. IR/OUT tagged. Week 1 is Tue to Sun. |
 | R12 | Pills under Games this week: each duo's top 10 = top 5 per manager by draft pick, with games this week. |
+
+Round 3: done, pushed under the standing OK for display changes.
