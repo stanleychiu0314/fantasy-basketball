@@ -3,13 +3,13 @@ import type { Duo } from "@/types/league";
 import { CATS, formatValue } from "@/lib/scoring";
 import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type WeekReport } from "@/lib/analytics";
 import { weekRange } from "@/lib/season";
+import type { TeammateReport } from "@/lib/teammates";
 import { RefreshProjections } from "./RefreshProjections";
 import { RecomputeButton } from "./RecomputeButton";
 
-type RosterRow = { player: RatedPlayer; manager: string; ir: boolean; injury: string; games: number; starter: boolean; dropCost: number | null };
 type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
-type Overview = { season: SeasonReport; trades: TradeIdea[]; tradesAsOf: string | null; roster: RosterRow[]; currentWeek: number };
+type Overview = { season: SeasonReport; trades: TradeIdea[]; tradesAsOf: string | null };
 
 const PERCENT = 100;
 const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
@@ -44,11 +44,11 @@ function TopBar({ me, eyebrow, back }: { me: Duo; eyebrow: string; back: { href:
   );
 }
 
-/** The overview: this week's and next week's matchup buttons, then season-long analysis. */
-export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info: DataInfo; weeks: WeekLink[]; analysis: Overview | null }) {
+/** The admin home: matchup buttons, you vs your partner, season analysis, trades, then projection data. */
+export function AnalyticsOverview({ me, info, weeks, teammates, analysis }: { me: Duo; info: DataInfo; weeks: WeekLink[]; teammates: TeammateReport; analysis: Overview | null }) {
   return (
-    <div className="wrap adm">
-      <TopBar me={me} eyebrow="Only you can see this" back={{ href: "/admin", label: "Back to admin" }} />
+    <>
+      <p className="sub">{me.name}: {me.a} + {me.b}, scored as one duo.</p>
 
       <div className="strip">
         {weeks.map((w) => (
@@ -60,6 +60,17 @@ export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info
         ))}
       </div>
 
+      <TeammateSection me={me} report={teammates} />
+
+      {!analysis ? (
+        <p className="note">Analytics appear once projections are stored and ESPN rosters have synced.</p>
+      ) : (
+        <>
+          <SeasonSection season={analysis.season} me={me} />
+          <TradeSection trades={analysis.trades} asOf={analysis.tradesAsOf} />
+        </>
+      )}
+
       <section className="card" style={{ display: "grid", gap: 8 }}>
         <p className="eyebrow">Projection data</p>
         <p className="note">
@@ -70,17 +81,45 @@ export function AnalyticsOverview({ me, info, weeks, analysis }: { me: Duo; info
         </p>
         <RefreshProjections />
       </section>
+    </>
+  );
+}
 
-      {!analysis ? (
-        <p className="note">Analytics appear once projections are stored and ESPN rosters have synced.</p>
+/** Categories won by each partner in every week, with a subtotal per month and a season total. */
+function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
+  const right = { textAlign: "right" } as const;
+  const cells = (s: { a: number; b: number; ties: number }) => (
+    <>
+      <td style={right} className={`num${s.a > s.b ? " lead" : ""}`}>{s.a}</td>
+      <td style={right} className={`num${s.b > s.a ? " lead" : ""}`}>{s.b}</td>
+      <td style={right} className="num">{s.ties}</td>
+    </>
+  );
+  return (
+    <section className="card">
+      <p className="eyebrow">You vs {me.a}</p>
+      {report.months.length === 0 ? (
+        <p className="note" style={{ marginTop: 6 }}>No week has both managers&apos; scores yet.</p>
       ) : (
-        <>
-          <SeasonSection season={analysis.season} me={me} />
-          <TradeSection trades={analysis.trades} asOf={analysis.tradesAsOf} />
-          <RosterSection roster={analysis.roster} week={analysis.currentWeek} />
-        </>
+        <div className="scroll" style={{ marginTop: 8 }}>
+          <table>
+            <thead><tr><th>Week</th><th style={right}>{me.a}</th><th style={right}>{me.b}</th><th style={right}>Ties</th></tr></thead>
+            <tbody>
+              {report.months.flatMap((m) => [
+                ...m.weeks.map((w) => (
+                  <tr key={w.week}><td>Week {w.week} · {weekRange(w.week)}</td>{cells(w)}</tr>
+                )),
+                <tr key={m.label}><td><b>{m.label}</b></td>{cells(m.total)}</tr>,
+              ])}
+              <tr className="mine"><td><b>Season</b></td>{cells(report.total)}</tr>
+            </tbody>
+          </table>
+        </div>
       )}
-    </div>
+      <p className="note" style={{ marginTop: 8 }}>
+        Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date.
+      </p>
+    </section>
   );
 }
 
@@ -302,51 +341,6 @@ function TradeSection({ trades, asOf }: { trades: TradeIdea[]; asOf: string | nu
         </div>
       )}
       <p className="note" style={{ marginTop: 8 }}>You and Them: change in expected categories won in an average week, for the rest of the season.</p>
-    </section>
-  );
-}
-
-function RosterSection({ roster, week }: { roster: RosterRow[]; week: number }) {
-  const cheapest = Math.min(...roster.flatMap((r) => (r.dropCost === null ? [] : [r.dropCost])));
-  return (
-    <section className="card">
-      <p className="eyebrow">Your roster</p>
-      <div className="scroll" style={{ marginTop: 8 }}>
-        <table>
-          <thead>
-            <tr>
-              <th>Player</th><th>Role</th><th style={{ textAlign: "right" }}>Wk {week} games</th><th style={{ textAlign: "right" }}>Value</th><th style={{ textAlign: "right" }}>Cost to drop</th>
-              {CATS.map((c) => <th key={c.key} style={{ textAlign: "right" }}>{c.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {[...roster].sort((a, b) => b.player.value - a.player.value).map((r) => (
-              <tr key={r.player.playerId}>
-                <td>
-                  <b>{r.player.name}</b>
-                  <div className="note">{r.manager}{r.injury !== "ACTIVE" ? ` · ${r.injury.replace("_", " ").toLowerCase()}` : ""}</div>
-                </td>
-                <td>{r.ir ? "IR" : r.starter ? "Starter" : "Bench"}</td>
-                <td style={{ textAlign: "right" }} className="num">{r.games}</td>
-                <td style={{ textAlign: "right" }} className="num">{r.player.value.toFixed(1)}</td>
-                <td style={{ textAlign: "right" }} className={`num${r.dropCost !== null && r.dropCost === cheapest ? " lead" : ""}`}>{r.dropCost === null ? "\u2013" : r.dropCost.toFixed(2)}</td>
-                {CATS.map((c) => (
-                  <td key={c.key} style={{ textAlign: "right" }} className={`num ${r.player.z[c.key] >= 1 ? "up" : r.player.z[c.key] <= -1 ? "down" : ""}`}>
-                    {c.pct
-                      ? formatValue(c, r.player.perGame[c.pct[1]] > 0 ? r.player.perGame[c.pct[0]] / r.player.perGame[c.pct[1]] : null)
-                      : r.player.perGame[c.field!].toFixed(1)}
-                  </td>
-                ))}
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
-      <p className="note" style={{ marginTop: 8 }}>
-        Per-game numbers. Value is the sum of 9-category z-scores against the top 156 players. Green and red mark a big plus or minus.
-        Cost to drop is how many expected categories per week you would lose for the rest of the season with him gone and nobody
-        added, bench depth included. The lowest (highlighted) is your best drop.
-      </p>
     </section>
   );
 }

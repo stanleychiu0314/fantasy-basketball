@@ -1,18 +1,14 @@
 "use client";
 
 import { useState, useTransition } from "react";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
-import type { LeagueConfig, LeagueState, ScoreEdit, StatLine } from "@/types/league";
-import { FIELDS, FIELD_LABEL, emptyLine, memberKeys, pairsFor } from "@/lib/scoring";
+import type { Duo, LeagueConfig, LeagueState } from "@/types/league";
+import { memberKeys, pairsFor } from "@/lib/scoring";
 import { PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS, weekRange } from "@/lib/season";
 import { computeBracket, gamesForWeek, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
 import {
   dismissTradeAlertAction,
-  logoutAction,
   saveConfigAction,
-  saveStatsAction,
-  setFinalAction,
   setPaidAction,
   syncAction,
   type ActionResult,
@@ -20,23 +16,31 @@ import {
 import { MatchupCard } from "../MatchupCard";
 import { WeekChips } from "../WeekChips";
 
-type Props = { state: LeagueState; edits: ScoreEdit[] };
-
-/** Commissioner tools: ESPN sync, league settings, team mapping, schedule and score corrections. */
-export function AdminApp({ state, edits }: Props) {
+/** Pending flag, last result message and a runner that refreshes the page after a server action. */
+export function useAdminRun() {
   const router = useRouter();
-  const [config, setConfig] = useState<LeagueConfig>(state.config);
-  const [week, setWeek] = useState(state.currentWeek);
   const [msg, setMsg] = useState<ActionResult | null>(null);
   const [pending, start] = useTransition();
-  const dirty = JSON.stringify(config) !== JSON.stringify(state.config);
-
   const run = (fn: () => Promise<ActionResult>) =>
     start(async () => {
-      const r = await fn();
-      setMsg(r);
+      setMsg(await fn());
       router.refresh();
     });
+  return { msg, pending, run };
+}
+
+/** Manager name for a member key such as "d1a". */
+export const managerName = (duos: Duo[], key: string) => {
+  const duo = duos.find((d) => key.startsWith(d.id));
+  return duo ? (key.endsWith("a") ? duo.a : duo.b) : key;
+};
+
+/** Settings tab: ESPN sync, buy-ins, league settings, team mapping, punishment picks, schedule, trade alerts. */
+export function AdminSettings({ state }: { state: LeagueState }) {
+  const [config, setConfig] = useState<LeagueConfig>(state.config);
+  const [week, setWeek] = useState(state.currentWeek);
+  const { msg, pending, run } = useAdminRun();
+  const dirty = JSON.stringify(config) !== JSON.stringify(state.config);
 
   const patch = (p: Partial<LeagueConfig>) => setConfig((c) => ({ ...c, ...p }));
   const patchDuo = (i: number, p: Partial<LeagueConfig["duos"][number]>) =>
@@ -52,29 +56,10 @@ export function AdminApp({ state, edits }: Props) {
   const draft = { ...state, config };
   const bracket = computeBracket(draft);
   const playoffWeek = isPlayoffWeek(draft, week);
-  const managerName = (key: string) => {
-    const duo = config.duos.find((d) => key.startsWith(d.id));
-    return duo ? (key.endsWith("a") ? duo.a : duo.b) : key;
-  };
   const synced = state.lastSynced ? new Date(state.lastSynced).toLocaleString() : "never";
 
   return (
-    <div className="wrap adm">
-      <header className="top" style={{ paddingBlock: 0 }}>
-        <div>
-          <p className="eyebrow">Commissioner</p>
-          <h1>{config.name} <span>admin</span></h1>
-        </div>
-        <div className="pills">
-          <Link className="btn" href="/admin/analytics">Analytics</Link>
-          <Link className="btn" href="/">View site</Link>
-          <form action={logoutAction}><button className="btn" type="submit">Log out</button></form>
-        </div>
-      </header>
-
-      {!state.hasDatabase && (
-        <div className="banner">No database is connected, so nothing here can be saved yet. Add Neon in Vercel, then redeploy.</div>
-      )}
+    <>
       {msg && <p className={msg.ok ? "ok" : "err"} role="status">{msg.message}</p>}
 
       {state.tradeAlerts.length > 0 && (
@@ -87,7 +72,7 @@ export function AdminApp({ state, edits }: Props) {
             {state.tradeAlerts.map((a) => (
               <div key={a.id} className="row2" style={{ justifyContent: "space-between" }}>
                 <span>
-                  <b>{a.playerName}</b>: {managerName(a.fromMember)} to {managerName(a.toMember)}
+                  <b>{a.playerName}</b>: {managerName(config.duos, a.fromMember)} to {managerName(config.duos, a.toMember)}
                   <span className="note"> · {new Date(a.detectedAt).toLocaleString()}</span>
                 </span>
                 <button className="btn" disabled={pending} onClick={() => run(() => dismissTradeAlertAction(a.id))}>Dismiss</button>
@@ -216,7 +201,7 @@ export function AdminApp({ state, edits }: Props) {
       </section>
 
       <section className="card" style={{ display: "grid", gap: 14 }}>
-        <p className="eyebrow">{playoffWeek ? `${weekLabel(draft, week)} · ` : ""}Week {week} · {weekRange(week)}</p>
+        <p className="eyebrow">Schedule · {playoffWeek ? `${weekLabel(draft, week)} · ` : ""}Week {week} · {weekRange(week)}</p>
         <WeekChips weeks={config.weeks} regularWeeks={config.regularWeeks} current={state.currentWeek} selected={week} final={state.final} onPick={setWeek} />
         {playoffWeek ? (
           <p className="note">Playoff matchups come from the bracket: the seeds and the 1st seed&apos;s pick above.</p>
@@ -237,11 +222,6 @@ export function AdminApp({ state, edits }: Props) {
         </div>
         )}
         {!playoffWeek && usedTwice && <p className="warn">A duo appears twice this week. Each duo should play exactly once.</p>}
-        <label className="switch">
-          <input type="checkbox" checked={!!state.final[week]} disabled={pending || !state.hasDatabase}
-            onChange={(e) => run(() => setFinalAction(week, e.target.checked))} />
-          <span>Week final</span>
-        </label>
       </section>
 
       <div className="banner" style={{ position: "sticky", bottom: 12, zIndex: 4, visibility: dirty ? "visible" : "hidden" }}>
@@ -261,116 +241,6 @@ export function AdminApp({ state, edits }: Props) {
           ),
         )}
       </div>
-
-      <section style={{ display: "grid", gap: 12 }}>
-        <div>
-          <h2 className="h2" style={{ fontSize: "1.7rem" }}>Correct scores</h2>
-          <p className="note">Only needed if ESPN is wrong or missing a week. A saved row is marked manual and ESPN will not overwrite it.</p>
-        </div>
-        {config.duos.map((d) =>
-          memberKeys(d).map((key, i) => (
-            <StatRow
-              key={`${week}-${key}`}
-              label={`${i ? d.b : d.a} (${d.name})`}
-              stats={state.scores[week]?.[key] ?? null}
-              isManual={state.manual.some((m) => m.week === week && m.member === key)}
-              disabled={pending || !state.hasDatabase}
-              onSave={(s) => run(() => saveStatsAction(week, key, s))}
-              onRevert={() => run(() => saveStatsAction(week, key, null))}
-            />
-          )),
-        )}
-      </section>
-
-      <section className="card">
-        <p className="eyebrow">Score edit history</p>
-        {edits.length === 0 ? (
-          <p className="note" style={{ marginTop: 8 }}>No manual changes yet.</p>
-        ) : (
-          <div className="scroll" style={{ marginTop: 8 }}>
-            <table>
-              <thead><tr><th>When</th><th>Week</th><th>Manager</th><th>Change</th></tr></thead>
-              <tbody>
-                {edits.map((e) => (
-                  <tr key={e.id}>
-                    <td>{new Date(e.createdAt).toLocaleString()}</td>
-                    <td>{e.week}</td>
-                    <td>{managerName(e.member)}</td>
-                    <td>{e.action === "revert" ? "Reverted to ESPN" : describeChange(e.oldStats, e.newStats)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </section>
-    </div>
-  );
-}
-
-/** "PTS 410 to 432, REB 180 to 175" for the fields that changed. */
-function describeChange(before: StatLine | null, after: StatLine | null): string {
-  if (!after) return "Cleared";
-  if (!before) return "Entered by hand (no ESPN data)";
-  const changed = FIELDS.filter((f) => before[f] !== after[f]).map((f) => `${FIELD_LABEL[f]} ${before[f]} to ${after[f]}`);
-  return changed.length ? changed.join(", ") : "No change";
-}
-
-type RowProps = {
-  label: string;
-  stats: StatLine | null;
-  isManual: boolean;
-  disabled: boolean;
-  onSave: (s: StatLine) => void;
-  onRevert: () => void;
-};
-
-/** One ESPN team's line for the selected week, editable as a manual override. */
-function StatRow({ label, stats, isManual, disabled, onSave, onRevert }: RowProps) {
-  const [draft, setDraft] = useState<Record<string, string>>(() =>
-    Object.fromEntries(FIELDS.map((f) => [f, stats ? String(stats[f]) : ""])),
-  );
-  const changed = FIELDS.some((f) => draft[f] !== (stats ? String(stats[f]) : ""));
-
-  /** Paste 11 numbers in order into any box to fill the row. */
-  const onPaste = (e: React.ClipboardEvent) => {
-    const nums = e.clipboardData.getData("text").match(/-?\d+(?:\.\d+)?/g);
-    if (!nums || nums.length < FIELDS.length) return;
-    e.preventDefault();
-    setDraft(Object.fromEntries(FIELDS.map((f, i) => [f, nums[i]])));
-  };
-
-  const save = () => {
-    const line = emptyLine();
-    for (const f of FIELDS) line[f] = Number(draft[f]) || 0;
-    onSave(line);
-  };
-
-  return (
-    <div className="eb">
-      <div className="row2" style={{ justifyContent: "space-between", marginBottom: 6 }}>
-        <b>{label}</b>
-        <span className={`src${isManual ? " manual" : ""}`}>{isManual ? "Manual" : stats ? "ESPN" : "No data"}</span>
-      </div>
-      <div className="scroll">
-        <table>
-          <thead><tr>{FIELDS.map((f) => <th key={f} style={{ textAlign: "right" }}>{FIELD_LABEL[f]}</th>)}</tr></thead>
-          <tbody>
-            <tr>
-              {FIELDS.map((f) => (
-                <td key={f}>
-                  <input type="text" inputMode="numeric" value={draft[f]} aria-label={`${label} ${FIELD_LABEL[f]}`}
-                    onPaste={onPaste} onChange={(e) => setDraft((d) => ({ ...d, [f]: e.target.value }))} />
-                </td>
-              ))}
-            </tr>
-          </tbody>
-        </table>
-      </div>
-      <div className="row2" style={{ marginTop: 8 }}>
-        <button className="btn" disabled={disabled || !changed} onClick={save}>Save as manual</button>
-        {isManual && <button className="btn" disabled={disabled} onClick={onRevert}>Use ESPN numbers</button>}
-      </div>
-    </div>
+    </>
   );
 }
