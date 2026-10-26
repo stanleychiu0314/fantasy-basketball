@@ -112,3 +112,12 @@ Round 2: done locally, commit efc4cf5, 72 tests pass. Waiting on Stanley to appr
 | R12 | Pills under Games this week: each duo's top 10 = top 5 per manager by draft pick, with games this week. |
 
 Round 3: done, pushed under the standing OK for display changes.
+
+## Round 4 feedback (26 Oct 2026): League tab
+
+| # | Change |
+| --- | --- |
+| R13 | League tab uses **this week's games only** (player_day_stats for the week, every game the player played, not just active-lineup days). Empty state ("Fills in once games are played this week") until someone has played. Rank by a weekly value: per-game z-scores across all players with 1+ game this week, summed over the 9 categories (TO inverted, FG%/FT% weighted by attempts, as in ratePlayers). |
+| R14 | Owner column: every duo gets its own color, and every owner shows as a pill in that color (6 duos). Free agents get a neutral pill. Keep the row tint for Smashing Balls. |
+| R15 | Heat-map background on every stat cell, from that category's z-score this week: z >= +2 is the strongest green, fading to no color at 0, then to red at z <= -2. TO is inverted (fewer is greener). The same colors in light and dark themes, with readable text. |
+| R16 | Sticky header row when scrolling down, and on phones the #, Player, Owner and Games columns stay pinned while stats scroll sideways. |
