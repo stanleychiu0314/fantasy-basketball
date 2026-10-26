@@ -6,9 +6,13 @@ import type { Duo, LeagueState, StatLine } from "@/types/league";
 export type Split = { a: number; b: number; ties: number };
 /** One category in one week: each manager's value (null when no data) and who won it. */
 export type TeammateCat = { key: string; a: number | null; b: number | null; winner: "a" | "b" | "tie" };
-export type TeammateWeek = Split & { week: number; cats: TeammateCat[] };
-export type TeammateMonth = { label: string; weeks: TeammateWeek[]; total: Split };
-export type TeammateReport = { months: TeammateMonth[]; total: Split };
+/** Active-lineup games played by each teammate (a = duo.a, b = duo.b). */
+export type Games = { a: number; b: number };
+export type TeammateWeek = Split & { week: number; cats: TeammateCat[]; games: Games };
+export type TeammateMonth = { label: string; weeks: TeammateWeek[]; total: Split; games: Games };
+export type TeammateReport = { months: TeammateMonth[]; total: Split; games: Games };
+/** Active-lineup games per week per member key, as player_day_stats counts them. */
+export type MemberGames = Record<number, Record<string, number>>;
 
 /** Floating point slack when comparing two percentages for a tie. */
 const TIE_EPSILON = 1e-12;
@@ -43,19 +47,32 @@ function compareWeek(scores: LeagueState["scores"], week: number, duo: Duo): (Sp
   return out;
 }
 
-/** One row per week that has both managers' totals, grouped by the calendar month the week starts in. */
-export function teammateReport(scores: LeagueState["scores"], duo: Duo, weekCount: number): TeammateReport {
+const addGames = (t: Games, g: Games) => {
+  t.a += g.a;
+  t.b += g.b;
+};
+
+/**
+ * One row per week that has both managers' totals, grouped by the calendar month the
+ * week starts in, with each manager's games played per week, month and season.
+ */
+export function teammateReport(scores: LeagueState["scores"], duo: Duo, weekCount: number, memberGames: MemberGames = {}): TeammateReport {
+  const [ka, kb] = memberKeys(duo);
   const months = new Map<string, TeammateMonth>();
   const total: Split = { a: 0, b: 0, ties: 0 };
+  const games: Games = { a: 0, b: 0 };
   for (let week = 1; week <= weekCount; week++) {
     const split = compareWeek(scores, week, duo);
     if (!split) continue;
+    const g = { a: memberGames[week]?.[ka] ?? 0, b: memberGames[week]?.[kb] ?? 0 };
     const label = new Date(weekBounds(week)[0]).toLocaleString("en-US", { month: "long", year: "numeric", timeZone: "UTC" });
-    const month = months.get(label) ?? { label, weeks: [], total: { a: 0, b: 0, ties: 0 } };
-    month.weeks.push({ week, ...split });
+    const month = months.get(label) ?? { label, weeks: [], total: { a: 0, b: 0, ties: 0 }, games: { a: 0, b: 0 } };
+    month.weeks.push({ week, ...split, games: g });
     addTo(month.total, split);
     addTo(total, split);
+    addGames(month.games, g);
+    addGames(games, g);
     months.set(label, month);
   }
-  return { months: [...months.values()], total };
+  return { months: [...months.values()], total, games };
 }

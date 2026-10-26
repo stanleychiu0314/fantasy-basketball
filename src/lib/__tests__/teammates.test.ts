@@ -41,4 +41,12 @@ describe("teammateReport", () => {
     expect(r.months.flatMap((m) => m.weeks.map((w) => w.week))).toEqual([2]);
     expect(r.total.ties).toBeLessThan(9);
   });
+
+  it("adds each manager's games per week, per month and for the season", () => {
+    const win = { d1a: line({ pts: 2 }), d1b: line({ pts: 1 }) };
+    const r = teammateReport({ 1: win, 2: win, 3: win }, duo, 3, { 1: { d1a: 20, d1b: 18 }, 2: { d1a: 30 }, 3: { d1a: 5, d1b: 7 } });
+    expect(r.months[0].weeks.map((w) => w.games)).toEqual([{ a: 20, b: 18 }, { a: 30, b: 0 }]);
+    expect(r.months.map((m) => m.games)).toEqual([{ a: 50, b: 18 }, { a: 5, b: 7 }]);
+    expect(r.games).toEqual({ a: 55, b: 25 });
+  });
 });

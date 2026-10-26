@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GameWindow, PlayerMeta, RatedPlayer } from "@/lib/analytics";
 import { CATS, emptyLine, FIELDS } from "@/lib/scoring";
-import { formatDiff, gamesPlayed, leadOf, managerGames, managersOf, rosterRows, topDrafted, weekWindow } from "@/lib/week-view";
+import { formatDiff, gamesPlayed, leadOf, managerGames, managersOf, leagueTable, rosterRows, scheduleRows, topDrafted, weekDays, weekWindow } from "@/lib/week-view";
 import type { Duo, PlayerWeek } from "@/types/league";
 
 const duo: Duo = { id: "d1", name: "Smashing Balls", a: "Adam", b: "Stanley", espnA: 2, espnB: 1 };
@@ -139,5 +139,47 @@ describe("topDrafted", () => {
       { playerId: 1, name: "P1", games: 1 },
       { playerId: 4, name: "P4", games: 4 },
     ]);
+  });
+});
+
+describe("weekDays", () => {
+  it("uses the real days of the week: week 1 is Tue to Sun, week 2 Mon to Sun", () => {
+    expect(weekDays(1)).toEqual(["Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((label, i) => ({ day: i + 1, label })));
+    expect(weekDays(2).map((d) => d.label)).toEqual(["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+    expect(weekDays(2)[0].day).toBe(7);
+    // Week 18 spans the All-Star break: two calendar weeks.
+    expect(weekDays(18)).toHaveLength(14);
+  });
+});
+
+describe("scheduleRows", () => {
+  it("merges both managers by draft pick, marks game days and tags IR and OUT", () => {
+    const m = (proTeamId: number, draftPick: number, injuryStatus = "ACTIVE"): PlayerMeta => ({ proTeamId, injuryStatus, onTeamId: 1, draftPick, adp: null });
+    const meta = new Map([[1, m(1, 20)], [2, m(2, 3, "OUT")], [3, m(1, 9)]]);
+    const gameDays = new Map([[1, new Set([7, 9])], [2, new Set([8])]]);
+    const rows = scheduleRows(
+      [{ name: "Stanley", roster: [{ id: 1, name: "P1" }, { id: 3, name: "P3", ir: true }] }, { name: "Adam", roster: [{ id: 2, name: "P2" }] }],
+      meta, new Map(), gameDays, [7, 8, 9],
+    );
+    expect(rows.map((r) => [r.name, r.manager, r.tag, r.plays])).toEqual([
+      ["P2", "Adam", "OUT", [false, true, false]],
+      ["P3", "Stanley", "IR", [true, false, true]],
+      ["P1", "Stanley", null, [true, false, true]],
+    ]);
+  });
+});
+
+describe("leagueTable", () => {
+  it("ranks every rated player by value, names owners and marks both duos in the matchup", () => {
+    const duos: Duo[] = [duo, { id: "d2", name: "Rivals", a: "Ivan", b: "Scott", espnA: 3, espnB: 4 }, { id: "d3", name: "Others", a: "X", b: "Y", espnA: 5, espnB: 6 }];
+    const ratings = new Map([1, 2, 3, 4].map((id) => [id, rated(id, id)]));
+    const rows = leagueTable({ rated: ratings, rosters: { 1: [{ id: 1, name: "P1" }], 3: [{ id: 2, name: "P2" }], 5: [{ id: 3, name: "P3" }] }, duos, mine: "d1", theirs: "d2", gamesOf: () => 3, limit: 3 });
+    expect(rows.map((r) => [r.playerId, r.owner, r.side, r.games])).toEqual([
+      [4, null, null, 3],
+      [3, "X · Others", null, 3],
+      [2, "Ivan · Rivals", "theirs", 3],
+    ]);
+    expect(leagueTable({ rated: ratings, rosters: { 1: [{ id: 1, name: "P1" }] }, duos, mine: "d1", theirs: "d2", gamesOf: () => 0 }).at(-1))
+      .toMatchObject({ playerId: 1, owner: "Stanley · Smashing Balls", side: "mine" });
   });
 });

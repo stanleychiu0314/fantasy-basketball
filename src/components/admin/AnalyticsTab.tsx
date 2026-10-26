@@ -1,5 +1,6 @@
 import { seasonReport } from "@/lib/analytics";
 import { myGame, openWeeks, type AnalyticsContext } from "@/lib/analytics-context";
+import { memberGamesByWeek } from "@/lib/league";
 import { loadTrades } from "@/lib/snapshots";
 import { teammateReport } from "@/lib/teammates";
 import { AnalyticsOverview } from "./AnalyticsView";
@@ -8,7 +9,7 @@ import { AnalyticsOverview } from "./AnalyticsView";
 export async function AnalyticsTab({ ctx }: { ctx: AnalyticsContext }) {
   const { state, me, info, ready } = ctx;
   const weeks = openWeeks(state).map((week, i) => ({ week, when: i === 0 ? "This week" : "Next week", game: myGame(state, me, week) }));
-  const teammates = teammateReport(state.scores, me, state.config.weeks);
+  const teammates = teammateReport(state.scores, me, state.config.weeks, await memberGamesByWeek(state.config));
   if (!ready) return <AnalyticsOverview me={me} info={info} weeks={weeks} teammates={teammates} analysis={null} />;
 
   const trades = await loadTrades(ctx);

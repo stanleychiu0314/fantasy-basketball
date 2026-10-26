@@ -1,6 +1,6 @@
 "use client";
 
-import { useSyncExternalStore, type ReactNode } from "react";
+import { useState, useSyncExternalStore, type ReactNode } from "react";
 
 type Tab = { id: string; label: string; panel: ReactNode };
 
@@ -37,6 +37,35 @@ export function WeekTabs({ tabs }: { tabs: Tab[] }) {
       </nav>
       {tabs.map((t) => (
         <div key={t.id} id={`panel-${t.id}`} role="tabpanel" aria-labelledby={`tab-${t.id}`} hidden={open !== t.id} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
+          {t.panel}
+        </div>
+      ))}
+    </>
+  );
+}
+
+/** Tabs inside a tab (Rosters: Stats and Schedule). Local state, so the page's hash keeps the outer tab. */
+export function SubTabs({ id, label, tabs }: { id: string; label: string; tabs: Tab[] }) {
+  const [open, setOpen] = useState(tabs[0]?.id);
+  return (
+    <>
+      <div className="nav-in" role="tablist" aria-label={label}>
+        {tabs.map((t) => (
+          <button
+            key={t.id}
+            id={`${id}-tab-${t.id}`}
+            className="tab"
+            role="tab"
+            aria-selected={open === t.id}
+            aria-controls={`${id}-panel-${t.id}`}
+            onClick={() => setOpen(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tabs.map((t) => (
+        <div key={t.id} id={`${id}-panel-${t.id}`} role="tabpanel" aria-labelledby={`${id}-tab-${t.id}`} hidden={open !== t.id} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {t.panel}
         </div>
       ))}

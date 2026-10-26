@@ -5,7 +5,7 @@ import { weekReport } from "@/lib/analytics";
 import { playersWithStatsOn, playerWeek } from "@/lib/league";
 import { emptyLine } from "@/lib/scoring";
 import { gameDayAt } from "@/lib/season";
-import { managerGames, managersOf, rosterRows, topDrafted, weekWindow } from "@/lib/week-view";
+import { leagueTable, managerGames, managersOf, rosterRows, scheduleRows, topDrafted, weekDays, weekWindow } from "@/lib/week-view";
 import { WeekView } from "@/components/admin/WeekView";
 import { LoginForm } from "@/components/admin/LoginForm";
 import { loadAnalyticsContext, ME, myGame, openWeeks, played } from "@/lib/analytics-context";
@@ -40,23 +40,34 @@ export default async function WeekPage({ params }: PageProps<"/admin/analytics/w
 
   // The window drops today's games already played; for "plays today" those still count.
   const playsToday = started ? (id: number) => playedToday.has(id) || (window.playsOn?.(id, today) ?? false) : null;
-  // Pills show each star's games over the whole week, not just what is left.
+  // Pills and the League tab show games over the whole week, not just what is left.
   const wholeWeek = weekWindow(week, meta, gameDays, { full: true }).window;
+  const rosterOf = (team: number | null) => (team === null ? [] : (rosters[team] ?? []));
   const sides = [me, opponent].map((duo) => {
     const managers = managerGames(managersOf(duo, ME), rows, rosters, rated, window);
-    const roster = managers.flatMap((m) => (m.team === null ? [] : (rosters[m.team] ?? [])));
-    return { duo, managers, stars: topDrafted(roster, meta, rated, wholeWeek.gamesOf) };
+    // Top 5 per manager, so a duo shows 10.
+    const stars = managers.flatMap((m) => topDrafted(rosterOf(m.team), meta, rated, wholeWeek.gamesOf));
+    return { duo, managers, stars };
   });
+  const days = weekDays(week);
+  const schedule = {
+    days,
+    sides: sides.map(({ duo, managers }) => ({
+      duo,
+      rows: scheduleRows(managers.map((m) => ({ name: m.name, roster: rosterOf(m.team) })), meta, rated, gameDays, days.map((d) => d.day)),
+    })),
+  };
+  const league = leagueTable({ rated, rosters, duos: state.config.duos, mine: me.id, theirs: opponent.id, gamesOf: wholeWeek.gamesOf });
   const boxes = sides.flatMap(({ duo, managers }) =>
     managers.map((m) => ({
       manager: m.name,
       duo: duo.name,
-      rows: rosterRows({ roster: m.team === null ? [] : (rosters[m.team] ?? []), rows, member: m.key, meta, gamesLeft: window.gamesOf, playsToday }),
+      rows: rosterRows({ roster: rosterOf(m.team), rows, member: m.key, meta, gamesLeft: window.gamesOf, playsToday }),
     })),
   );
   const [stanley, adam] = sides[0].managers;
   const scores = state.scores[week] ?? {};
   const teammates = { me: stanley, mate: adam, mine: scores[stanley.key] ?? null, theirs: scores[adam.key] ?? null };
 
-  return <WeekView {...base} started={started} data={{ report, now, games: [sides[0], sides[1]], moves, boxes, teammates }} />;
+  return <WeekView {...base} started={started} data={{ report, now, games: [sides[0], sides[1]], moves, boxes, schedule, league, teammates }} />;
 }

@@ -58,11 +58,13 @@ export function AnalyticsOverview({ me, info, weeks, teammates, analysis }: { me
 /** Categories won by each partner in every week, with a subtotal per month and a season total. */
 function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
   const right = { textAlign: "right" } as const;
-  const cells = (s: { a: number; b: number; ties: number }) => (
+  const cells = (s: { a: number; b: number; ties: number; games: { a: number; b: number } }) => (
     <>
       <td style={right} className={`num${s.a > s.b ? " lead" : ""}`}>{s.a}</td>
       <td style={right} className={`num${s.b > s.a ? " lead" : ""}`}>{s.b}</td>
       <td style={right} className="num">{s.ties}</td>
+      <td style={right} className="num">{s.games.a}</td>
+      <td style={right} className="num">{s.games.b}</td>
     </>
   );
   return (
@@ -73,21 +75,21 @@ function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
       ) : (
         <div className="scroll" style={{ marginTop: 8 }}>
           <table>
-            <thead><tr><th>Week</th><th style={right}>{me.a}</th><th style={right}>{me.b}</th><th style={right}>Ties</th></tr></thead>
+            <thead><tr><th>Week</th><th style={right}>{me.a}</th><th style={right}>{me.b}</th><th style={right}>Ties</th><th style={right}>{me.a} games</th><th style={right}>{me.b} games</th></tr></thead>
             <tbody>
               {report.months.flatMap((m) => [
                 ...m.weeks.map((w) => (
                   <tr key={w.week}><td><WeekBreakdown me={me} week={w} /></td>{cells(w)}</tr>
                 )),
-                <tr key={m.label}><td><b>{m.label}</b></td>{cells(m.total)}</tr>,
+                <tr key={m.label}><td><b>{m.label}</b></td>{cells({ ...m.total, games: m.games })}</tr>,
               ])}
-              <tr className="mine"><td><b>Season</b></td>{cells(report.total)}</tr>
+              <tr className="mine"><td><b>Season</b></td>{cells({ ...report.total, games: report.games })}</tr>
             </tbody>
           </table>
         </div>
       )}
       <p className="note" style={{ marginTop: 8 }}>
-        Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date. Tap a week to see every category.
+        Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date. Games are active lineup games played. Tap a week to see every category.
       </p>
     </section>
   );

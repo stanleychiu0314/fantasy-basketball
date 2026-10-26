@@ -7,8 +7,12 @@ import type { Duo, MemberKey, PlayerWeek, StatLine } from "@/types/league";
 
 const TIE_EPSILON = 1e-12;
 const OUT = "OUT";
-/** Players per duo shown as pills under the games table. */
+/** Players per manager shown as pills under the games table. */
 export const TOP_DRAFTED = 5;
+/** Players listed in the League tab. */
+export const LEAGUE_TOP = 100;
+const MS_PER_DAY = 86_400_000;
+const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 /**
  * Games each player has left in a week. Before the week starts that is the whole week.
@@ -80,10 +84,14 @@ export function managerGames(
 
 export type StarPill = { playerId: number; name: string; games: number };
 
-/**
- * A duo's top players by this league's draft pick (earliest pick first, undrafted last,
- * ties broken by player value), each with his games this week.
- */
+/** Earliest pick in this league's draft first, undrafted last, ties broken by player value. */
+const byDraft = (meta: Map<number, PlayerMeta>, rated: Map<number, RatedPlayer>) => {
+  const pick = (id: number) => meta.get(id)?.draftPick ?? Infinity;
+  const value = (id: number) => rated.get(id)?.value ?? -Infinity;
+  return (a: { id: number }, b: { id: number }) => pick(a.id) - pick(b.id) || value(b.id) - value(a.id);
+};
+
+/** A manager's top players by this league's draft pick, each with his games this week. */
 export function topDrafted(
   roster: { id: number; name: string }[],
   meta: Map<number, PlayerMeta>,
@@ -91,12 +99,92 @@ export function topDrafted(
   gamesOf: (playerId: number) => number,
   limit = TOP_DRAFTED,
 ): StarPill[] {
-  const pick = (id: number) => meta.get(id)?.draftPick ?? Infinity;
-  const value = (id: number) => rated.get(id)?.value ?? -Infinity;
   return [...roster]
-    .sort((a, b) => pick(a.id) - pick(b.id) || value(b.id) - value(a.id))
+    .sort(byDraft(meta, rated))
     .slice(0, limit)
     .map((p) => ({ playerId: p.id, name: p.name, games: gamesOf(p.id) }));
+}
+
+/** The real days of a matchup week with weekday labels (week 1 starts on a Tuesday, week 18 spans two weeks). */
+export function weekDays(week: number): { day: number; label: string }[] {
+  const [start, end] = weekBounds(week);
+  return Array.from({ length: Math.round((end - start) / MS_PER_DAY) + 1 }, (_, i) => {
+    const at = start + i * MS_PER_DAY;
+    return { day: dayOfDate(at), label: WEEKDAYS[new Date(at).getUTCDay()] };
+  });
+}
+
+export type ScheduleRow = { playerId: number; name: string; manager: string; tag: "IR" | "OUT" | null; plays: boolean[] };
+
+/** One row per player across a duo's managers, by draft pick, marking each day his NBA team plays. */
+export function scheduleRows(
+  managers: { name: string; roster: { id: number; name: string; ir?: boolean }[] }[],
+  meta: Map<number, PlayerMeta>,
+  rated: Map<number, RatedPlayer>,
+  gameDays: Map<number, Set<number>>,
+  days: number[],
+): ScheduleRow[] {
+  return managers
+    .flatMap((m) => m.roster.map((p) => ({ ...p, manager: m.name })))
+    .sort(byDraft(meta, rated))
+    .map((p) => {
+      const m = meta.get(p.id);
+      const games = m ? gameDays.get(m.proTeamId) : undefined;
+      return {
+        playerId: p.id,
+        name: p.name,
+        manager: p.manager,
+        tag: p.ir ? "IR" : m?.injuryStatus === OUT ? "OUT" : null,
+        plays: days.map((d) => !!games?.has(d)),
+      };
+    });
+}
+
+export type LeagueRow = {
+  playerId: number;
+  name: string;
+  value: number;
+  perGame: StatLine;
+  /** "Manager · Duo", or null for a free agent. */
+  owner: string | null;
+  side: "mine" | "theirs" | null;
+  games: number;
+};
+
+/** Every rated player (rostered or free agent) by 9-cat value, with who owns him and his games this week. */
+export function leagueTable(args: {
+  rated: Map<number, RatedPlayer>;
+  rosters: TeamRosters;
+  duos: Duo[];
+  mine: string;
+  theirs: string;
+  gamesOf: (playerId: number) => number;
+  limit?: number;
+}): LeagueRow[] {
+  const { rated, rosters, duos, mine, theirs, gamesOf, limit = LEAGUE_TOP } = args;
+  const teamOwner = new Map<number, { owner: string; side: LeagueRow["side"] }>();
+  for (const d of duos) {
+    const side = d.id === mine ? "mine" : d.id === theirs ? "theirs" : null;
+    if (d.espnA !== null) teamOwner.set(d.espnA, { owner: `${d.a} · ${d.name}`, side });
+    if (d.espnB !== null) teamOwner.set(d.espnB, { owner: `${d.b} · ${d.name}`, side });
+  }
+  const ownerOf = new Map<number, { owner: string; side: LeagueRow["side"] }>();
+  for (const [team, players] of Object.entries(rosters)) {
+    const o = teamOwner.get(Number(team)) ?? { owner: `ESPN team ${team}`, side: null };
+    for (const p of players) ownerOf.set(p.id, o);
+  }
+  return [...rated.values()]
+    .sort((a, b) => b.value - a.value)
+    .slice(0, limit)
+    .map((p) => ({
+      playerId: p.playerId,
+      name: p.name,
+      value: p.value,
+      perGame: p.perGame,
+      owner: ownerOf.get(p.playerId)?.owner ?? null,
+      side: ownerOf.get(p.playerId)?.side ?? null,
+      games: gamesOf(p.playerId),
+    }));
 }
 
 /** Who leads one category, with turnovers counted lower-is-better. */

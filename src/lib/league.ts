@@ -252,6 +252,24 @@ export async function playersWithStatsOn(day: number): Promise<Set<number>> {
   return new Set(rows.map((r) => r.playerId));
 }
 
+/** Active-lineup games per week per member key, for every week stored. */
+export async function memberGamesByWeek(config: LeagueConfig): Promise<Record<number, Record<MemberKey, number>>> {
+  if (!db) return {};
+  const members = teamToMember(config);
+  const t = schema.playerDayStats;
+  const rows = await db
+    .select({ week: t.week, teamId: t.espnTeamId, games: sql<number>`count(*)::int` })
+    .from(t)
+    .where(eq(t.active, true))
+    .groupBy(t.week, t.espnTeamId);
+  const out: Record<number, Record<MemberKey, number>> = {};
+  for (const r of rows) {
+    const member = members.get(r.teamId);
+    if (member) (out[r.week] ??= {})[member] = r.games;
+  }
+  return out;
+}
+
 /** Each player's totals for one week, active-lineup days only, keyed to league members. */
 export async function playerWeek(week: number): Promise<PlayerWeek[]> {
   if (!db) return [];

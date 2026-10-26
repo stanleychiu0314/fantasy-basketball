@@ -5,10 +5,10 @@ import { CATS, catValue, formatValue, type Category } from "@/lib/scoring";
 import { weekRange } from "@/lib/season";
 import type { WeekMoves } from "@/lib/snapshot-rules";
 import type { Snapshot } from "@/lib/snapshots";
-import { formatDiff, leadOf, type Lead, type ManagerGames, type RosterRow, type StarPill } from "@/lib/week-view";
+import { formatDiff, leadOf, type LeagueRow, type Lead, type ManagerGames, type RosterRow, type ScheduleRow, type StarPill } from "@/lib/week-view";
 import { AsOf, Meter, pct, signed } from "./AnalyticsBits";
 import { RecomputeButton } from "./RecomputeButton";
-import { WeekTabs } from "./WeekTabs";
+import { SubTabs, WeekTabs } from "./WeekTabs";
 
 export type DuoGames = { duo: Duo; managers: ManagerGames[]; stars: StarPill[] };
 export type RosterBox = { manager: string; duo: string; rows: RosterRow[] };
@@ -22,6 +22,10 @@ export type WeekData = {
   games: [DuoGames, DuoGames];
   moves: Snapshot<WeekMoves> | null;
   boxes: RosterBox[];
+  /** Each duo's players by draft pick against the week's days. My duo first. */
+  schedule: { days: { day: number; label: string }[]; sides: { duo: Duo; rows: ScheduleRow[] }[] };
+  /** The top players in the league by value, rostered or not. */
+  league: LeagueRow[];
   /** Stanley vs Adam this week. Lines are null until ESPN has stats for the week. */
   teammates: { me: ManagerGames; mate: ManagerGames; mine: StatLine | null; theirs: StatLine | null };
 };
@@ -58,8 +62,9 @@ export function WeekView({ me, week, when, label, started, data }: Props) {
           tabs={[
             { id: "matchup", label: "Matchup", panel: <MatchupTab data={data} started={started} /> },
             { id: "moves", label: "Moves", panel: <MovesTab week={week} moves={data.moves} /> },
-            { id: "rosters", label: "Rosters", panel: <RostersTab boxes={data.boxes} /> },
+            { id: "rosters", label: "Rosters", panel: <RostersTab boxes={data.boxes} schedule={data.schedule} /> },
             { id: "teammate", label: `You vs ${data.teammates.mate.name}`, panel: <TeammateTab t={data.teammates} /> },
+            { id: "league", label: "League", panel: <LeagueTab rows={data.league} /> },
           ]}
         />
       )}
@@ -120,7 +125,7 @@ function MatchupTab({ data, started }: { data: WeekData; started: boolean }) {
         <GamesTable games={games} />
         <p className="note" style={{ marginTop: 8 }}>
           Played counts active lineup games so far. Left is projected for the rest of the week, including today&apos;s games not
-          started yet: each manager fills 10 lineup spots a day, and players listed OUT or on IR count for zero. Pills: each duo&apos;s
+          started yet: each manager fills 10 lineup spots a day, and players listed OUT or on IR count for zero. Pills: each manager&apos;s
           top 5 players by this league&apos;s draft pick, with their games this week.
         </p>
       </section>
@@ -308,7 +313,98 @@ function StreamingCard({ streaming }: { streaming: WeekMoves["streaming"] }) {
   );
 }
 
-function RostersTab({ boxes }: { boxes: RosterBox[] }) {
+function RostersTab({ boxes, schedule }: { boxes: RosterBox[]; schedule: WeekData["schedule"] }) {
+  return (
+    <SubTabs
+      id="rosters"
+      label="Roster views"
+      tabs={[
+        { id: "stats", label: "Stats", panel: <RosterStats boxes={boxes} /> },
+        { id: "schedule", label: "Schedule", panel: <RosterSchedule schedule={schedule} /> },
+      ]}
+    />
+  );
+}
+
+/** Both duos side by side (stacked on phones): "P" on each day a player's NBA team plays. */
+function RosterSchedule({ schedule }: { schedule: WeekData["schedule"] }) {
+  const center = { textAlign: "center" } as const;
+  return (
+    <>
+      <div className="box">
+        {schedule.sides.map(({ duo, rows }, i) => (
+          <section key={duo.id} className="card">
+            <p className="eyebrow">{i === 0 ? "Your duo" : "Opponent"}</p>
+            <h3>{duo.name}</h3>
+            <div className="scroll" style={{ marginTop: 8 }}>
+              <table>
+                <thead>
+                  <tr><th>Player</th>{schedule.days.map((d) => <th key={d.day} style={center}>{d.label}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {rows.map((r) => (
+                    <tr key={r.playerId}>
+                      <td className="pn">
+                        {r.name}
+                        {r.tag && <span className="tag verdict weakness" style={{ marginLeft: 6 }}>{r.tag}</span>}
+                        <small>{r.manager}</small>
+                      </td>
+                      {r.plays.map((p, j) => <td key={schedule.days[j].day} style={center}>{p ? <b>P</b> : "-"}</td>)}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ))}
+      </div>
+      <p className="note">Players are in this league&apos;s draft order. P means his NBA team plays that day, even if he is on IR or OUT.</p>
+    </>
+  );
+}
+
+/** Per-game counting stats read better with one decimal; percentages keep their own format. */
+const perGame = (line: StatLine, cat: Category) => (cat.pct ? formatValue(cat, catValue(line, cat)) : (catValue(line, cat) ?? 0).toFixed(1));
+const LEAGUE_CATS = ["pts", "tpm", "reb", "ast", "stl", "blk", "to", "fg", "ft"].map((k) => CATS.find((c) => c.key === k)!);
+
+function LeagueTab({ rows }: { rows: LeagueRow[] }) {
+  return (
+    <section className="card">
+      <p className="eyebrow">League · top {rows.length} by value</p>
+      <div className="scroll" style={{ marginTop: 8 }}>
+        <table>
+          <thead>
+            <tr>
+              <th style={RIGHT}>#</th><th>Player</th><th>Owner</th><th style={RIGHT}>Games</th>
+              {LEAGUE_CATS.map((c) => <th key={c.key} style={RIGHT}>{c.label}</th>)}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r, i) => (
+              <tr key={r.playerId} className={r.side === "mine" ? "mine" : ""}>
+                <td style={RIGHT} className="num">{i + 1}</td>
+                <td><b>{r.name}</b></td>
+                <td>
+                  {r.side
+                    ? <span className={`tag ${r.side === "mine" ? "hi" : "verdict weakness"}`}>{r.owner}</span>
+                    : <span className={r.owner ? "" : "note"}>{r.owner ?? "Free agent"}</span>}
+                </td>
+                <td style={RIGHT} className="num">{r.games}</td>
+                {LEAGUE_CATS.map((c) => <td key={c.key} style={RIGHT} className="num">{perGame(r.perGame, c)}</td>)}
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p className="note" style={{ marginTop: 8 }}>
+        Every player with a projection, rostered or free agent, ranked by 9-cat value. Stats are per game (projection blended with
+        real games). Games are his NBA games this week; OUT counts for zero. Your duo&apos;s players are highlighted, the opponent&apos;s are in red.
+      </p>
+    </section>
+  );
+}
+
+function RosterStats({ boxes }: { boxes: RosterBox[] }) {
   return (
     <>
       <div className="box">
