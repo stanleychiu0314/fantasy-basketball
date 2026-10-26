@@ -86,3 +86,16 @@ Sequencing changed from the table above: **C runs before B**, because both need 
 Nothing is committed by workers; the orchestrator reviews, commits, then asks Stanley to run `pnpm db:migrate` and approve the push.
 
 All tasks done locally on 26 Oct 2026. Waiting on Stanley to approve the push. Open: Next.js printed a security advisory recommending an upgrade (not acted on).
+
+## Round 2 feedback (26 Oct 2026, after deploy)
+
+| # | Change |
+| --- | --- |
+| R1 | Remove the **Correct scores** tab from the admin tab bar. Keep the code and keep `/admin?tab=scores` working, just not linked. |
+| R2 | **Settings:** remove the week matchup cards (the per-category score cards) from the Settings tab. |
+| R3 | **Overview, You vs Adam:** each week row expands (e.g. `<details>`) to show every category: Stanley's value, Adam's value, who won. |
+| R4 | **Moves, streaming:** team names are blank and favorable/unfavorable are all 0. Likely `nba_games.opponent_pro_team_id`/`abbrev` are still null because `refreshProjections` has not run since migration 0003, so the snapshot was built from empty data. Fix so it fills in (verify the upsert really writes them) and so a week-moves snapshot built from incomplete data gets rebuilt. Streaming must list free agents to stream; hide a section only if it is truly empty. |
+| R5 | **Games left is undercounted.** Monday shows 35 per manager; expected about 40. `weekWindow` counts "days after today" from 00:00 ET Monday, so today's unplayed games are dropped. Count today's games that have not been played yet. |
+| R6 | **Week, You vs Adam tab:** add projected games left for Stanley and Adam. |
+| R7 | **Matchup tab, Games this week:** two columns. Left: Smashing Balls total, then Stanley, then Adam. Right: opponent duo total, then each opponent manager. Played and left for each. |
+| R8 | Under that table, small pills: for each duo, its top 5 players by this league's draft pick, with how many games each plays this week (e.g. "Luka 4"). |
