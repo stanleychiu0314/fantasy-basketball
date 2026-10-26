@@ -101,3 +101,12 @@ All tasks done locally on 26 Oct 2026. Waiting on Stanley to approve the push. O
 | R8 | Under that table, small pills: for each duo, its top 5 players by this league's draft pick, with how many games each plays this week (e.g. "Luka 4"). |
 
 Round 2: done locally, commit efc4cf5, 72 tests pass. Waiting on Stanley to approve the push.
+
+## Round 3 feedback (26 Oct 2026)
+
+| # | Change |
+| --- | --- |
+| R9 | Week screen: new top-level tab **League** (after You vs Adam): every rostered player in the league plus free agents, ranked top to bottom by 9-cat value (`RatedPlayer.value`), with who owns him (manager and duo, or "Free agent"), per-game line, and games this week. Show the top 100. |
+| R10 | Overview You vs Adam: add games played by Stanley and by Adam per week, in monthly subtotals and in the season total (active lineup games from player_day_stats). |
+| R11 | Week screen Rosters tab gets two sub-tabs: **Stats** (exactly what it shows today) and **Schedule**. Schedule: two columns, ours (Stanley + Adam) on the left, opponent duo on the right; one row per player ordered by this league's draft pick; columns Mon to Sun of that week; "P" if he plays that day, "-" if not. IR/OUT tagged. Week 1 is Tue to Sun. |
+| R12 | Pills under Games this week: each duo's top 10 = top 5 per manager by draft pick, with games this week. |
