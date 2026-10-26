@@ -148,8 +148,8 @@ export function matchup(scores: LeagueState["scores"], week: number, A: Duo, B: 
  * Regular-season table: matchup record first, then category record, then raw category wins.
  * Pass maxWeek to see the table as it stood after that week (for rank movement arrows).
  */
-export function computeStandings(state: Pick<LeagueState, "config" | "scores">, maxWeek?: number) {
-  const { config, scores } = state;
+export function computeStandings(state: Pick<LeagueState, "config" | "scores"> & { final?: LeagueState["final"] }, maxWeek?: number) {
+  const { config, scores, final } = state;
   const rows = new Map<string, StandingRow>();
   for (const duo of config.duos) {
     rows.set(duo.id, {
@@ -168,7 +168,8 @@ export function computeStandings(state: Pick<LeagueState, "config" | "scores">, 
       const B = byId.get(ib);
       if (!A || !B || A === B) continue;
       const m = matchup(scores, week, A, B);
-      if (!m.played) continue;
+      // A live week stays off the table until the Monday lock marks it final.
+      if (!m.played || (final && !final[week])) continue;
       lastPlayed = week;
       const sides: [Duo, number, number][] = [[A, m.winsA, m.winsB], [B, m.winsB, m.winsA]];
       for (const [duo, mine, theirs] of sides) {

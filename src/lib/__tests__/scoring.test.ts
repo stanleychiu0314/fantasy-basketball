@@ -76,6 +76,18 @@ describe("standings", () => {
     expect(rows[0].duo.id).toBe("d1");
     expect(rows[0].w).toBe(1);
   });
+
+  it("leaves a live week off the table until it is final", () => {
+    const scores = {
+      1: { d1a: line({ pts: 100 }), d6a: line({ pts: 90 }) },
+      2: { d1a: line({ pts: 10 }), d6a: line({ pts: 10 }) },
+    };
+    const { rows, lastPlayed } = computeStandings({ config, scores, final: { 1: true } });
+    expect(lastPlayed).toBe(1);
+    const d1 = rows.find((r) => r.duo.id === "d1")!;
+    expect(d1.results).toEqual(["W"]);
+    expect(d1.played).toBe(1);
+  });
 });
 
 describe("season calendar", () => {
