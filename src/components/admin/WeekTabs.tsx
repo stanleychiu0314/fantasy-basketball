@@ -36,7 +36,7 @@ export function WeekTabs({ tabs }: { tabs: Tab[] }) {
         </div>
       </nav>
       {tabs.map((t) => (
-        <div key={t.id} id={`panel-${t.id}`} role="tabpanel" aria-labelledby={`tab-${t.id}`} hidden={open !== t.id} style={{ display: "grid", gap: 18 }}>
+        <div key={t.id} id={`panel-${t.id}`} role="tabpanel" aria-labelledby={`tab-${t.id}`} hidden={open !== t.id} style={{ display: "flex", flexDirection: "column", gap: 18 }}>
           {t.panel}
         </div>
       ))}

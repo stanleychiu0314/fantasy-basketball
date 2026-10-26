@@ -1,6 +1,6 @@
-import { CATS, catValue, memberKeys } from "@/lib/scoring";
+import { CATS, catValue, FIELDS, memberKeys } from "@/lib/scoring";
 import { weekBounds } from "@/lib/season";
-import type { Duo, LeagueState } from "@/types/league";
+import type { Duo, LeagueState, StatLine } from "@/types/league";
 
 /** Categories won by each teammate (a = duo.a, b = duo.b) plus ties. */
 export type Split = { a: number; b: number; ties: number };
@@ -11,6 +11,9 @@ export type TeammateReport = { months: TeammateMonth[]; total: Split };
 /** Floating point slack when comparing two percentages for a tie. */
 const TIE_EPSILON = 1e-12;
 
+/** All zeros: ESPN lists the week, but this manager has no games in it yet. */
+const blank = (line: StatLine) => FIELDS.every((f) => !line[f]);
+
 const addTo = (t: Split, s: Split) => {
   t.a += s.a;
   t.b += s.b;
@@ -20,12 +23,13 @@ const addTo = (t: Split, s: Split) => {
 /**
  * Compare the two managers' own team totals in one week, category by category.
  * Turnovers: fewer wins. A category with no data on either side counts as a tie.
+ * A week neither manager has played yet is skipped, so it does not read as 9 ties.
  */
 function compareWeek(scores: LeagueState["scores"], week: number, duo: Duo): Split | null {
   const [ka, kb] = memberKeys(duo);
   const la = scores[week]?.[ka];
   const lb = scores[week]?.[kb];
-  if (!la || !lb) return null;
+  if (!la || !lb || (blank(la) && blank(lb))) return null;
   const out: Split = { a: 0, b: 0, ties: 0 };
   for (const cat of CATS) {
     const x = catValue(la, cat);

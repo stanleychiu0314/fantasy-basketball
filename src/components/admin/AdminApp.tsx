@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import type { Duo, LeagueConfig, LeagueState } from "@/types/league";
 import { memberKeys, pairsFor } from "@/lib/scoring";
-import { PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS, weekRange } from "@/lib/season";
+import { formatEt, PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS, weekRange } from "@/lib/season";
 import { computeBracket, gamesForWeek, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
 import {
   dismissTradeAlertAction,
@@ -56,7 +56,7 @@ export function AdminSettings({ state }: { state: LeagueState }) {
   const draft = { ...state, config };
   const bracket = computeBracket(draft);
   const playoffWeek = isPlayoffWeek(draft, week);
-  const synced = state.lastSynced ? new Date(state.lastSynced).toLocaleString() : "never";
+  const synced = state.lastSynced ? formatEt(state.lastSynced) : "never";
 
   return (
     <>
@@ -73,7 +73,7 @@ export function AdminSettings({ state }: { state: LeagueState }) {
               <div key={a.id} className="row2" style={{ justifyContent: "space-between" }}>
                 <span>
                   <b>{a.playerName}</b>: {managerName(config.duos, a.fromMember)} to {managerName(config.duos, a.toMember)}
-                  <span className="note"> · {new Date(a.detectedAt).toLocaleString()}</span>
+                  <span className="note"> · {formatEt(a.detectedAt)}</span>
                 </span>
                 <button className="btn" disabled={pending} onClick={() => run(() => dismissTradeAlertAction(a.id))}>Dismiss</button>
               </div>
@@ -224,7 +224,7 @@ export function AdminSettings({ state }: { state: LeagueState }) {
         {!playoffWeek && usedTwice && <p className="warn">A duo appears twice this week. Each duo should play exactly once.</p>}
       </section>
 
-      <div className="banner" style={{ position: "sticky", bottom: 12, zIndex: 4, visibility: dirty ? "visible" : "hidden" }}>
+      <div className="banner save" style={{ position: "sticky", bottom: 12, zIndex: 4, visibility: dirty ? "visible" : "hidden" }}>
         <span>You have unsaved settings.</span>
         <div className="row2">
           <button className="btn" onClick={() => setConfig(state.config)}>Discard</button>

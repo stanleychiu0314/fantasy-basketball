@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { weekBounds, weekLockTime, weekPhase } from "@/lib/season";
+import { formatEt, weekBounds, weekLockTime, weekPhase } from "@/lib/season";
 
 // Week 1 is Tue Oct 20 to Sun Oct 25 2026 (EDT, UTC-4). Week 2 is Oct 26 to Nov 1;
 // DST ends 2am Sun Nov 1, so Nov 1 evening is EST (UTC-5).
@@ -48,5 +48,12 @@ describe("weekLockTime", () => {
   it("falls after the pending cutoff and before the next week's first sync", () => {
     expect(weekLockTime(1)).toBeGreaterThan(weekBounds(1)[1] + 86_400_000);
     expect(weekLockTime(1)).toBeLessThan(weekLockTime(2));
+  });
+});
+
+describe("formatEt", () => {
+  it("shows New York time whatever the server zone, across the DST change", () => {
+    expect(formatEt("2026-10-26T10:04:00Z")).toBe("Mon, Oct 26, 6:04 AM ET");
+    expect(formatEt(Date.UTC(2026, 10, 2, 10, 4))).toBe("Mon, Nov 2, 5:04 AM ET");
   });
 });

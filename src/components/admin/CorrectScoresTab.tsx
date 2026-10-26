@@ -3,7 +3,7 @@
 import { useState } from "react";
 import type { LeagueState, ScoreEdit, StatLine } from "@/types/league";
 import { FIELDS, FIELD_LABEL, emptyLine, memberKeys } from "@/lib/scoring";
-import { weekRange } from "@/lib/season";
+import { formatEt, weekRange } from "@/lib/season";
 import { weekLabel, isPlayoffWeek } from "@/lib/playoffs";
 import { saveStatsAction, setFinalAction } from "@/app/admin/actions";
 import { WeekChips } from "../WeekChips";
@@ -29,7 +29,7 @@ export function CorrectScores({ state, edits }: { state: LeagueState; edits: Sco
         </label>
       </section>
 
-      <section style={{ display: "grid", gap: 12 }}>
+      <section style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr)", gap: 12 }}>
         <div>
           <h2 className="h2" style={{ fontSize: "1.7rem" }}>Correct scores</h2>
           <p className="note">Only needed if ESPN is wrong or missing a week. A saved row is marked manual and ESPN will not overwrite it.</p>
@@ -60,7 +60,7 @@ export function CorrectScores({ state, edits }: { state: LeagueState; edits: Sco
               <tbody>
                 {edits.map((e) => (
                   <tr key={e.id}>
-                    <td>{new Date(e.createdAt).toLocaleString()}</td>
+                    <td>{formatEt(e.createdAt)}</td>
                     <td>{e.week}</td>
                     <td>{managerName(config.duos, e.member)}</td>
                     <td>{e.action === "revert" ? "Reverted to ESPN" : describeChange(e.oldStats, e.newStats)}</td>

@@ -25,4 +25,11 @@ describe("teammateReport", () => {
     ]);
     expect(r.total.a).toBe(2);
   });
+
+  it("skips a week neither manager has played yet, but keeps one where only one has", () => {
+    const scores = { 1: { d1a: line({}), d1b: line({}) }, 2: { d1a: line({ pts: 5, to: 1 }), d1b: line({}) } };
+    const r = teammateReport(scores, duo, 2);
+    expect(r.months.flatMap((m) => m.weeks.map((w) => w.week))).toEqual([2]);
+    expect(r.total.ties).toBeLessThan(9);
+  });
 });

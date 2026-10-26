@@ -77,6 +77,21 @@ const nyFormat = new Intl.DateTimeFormat("en-US", {
   minute: "numeric",
 });
 
+const etFormat = new Intl.DateTimeFormat("en-US", {
+  timeZone: NY_ZONE,
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  hour: "numeric",
+  minute: "2-digit",
+});
+
+/**
+ * A timestamp as New York time, e.g. "Mon, Oct 26, 6:04 AM ET", the same on any server.
+ * Newer ICU puts a narrow no-break space before AM/PM; a plain space keeps it predictable.
+ */
+export const formatEt = (at: Date | string | number) => `${etFormat.format(new Date(at)).replace(/\u202f/g, " ")} ET`;
+
 /** New York's UTC offset in ms at a UTC instant (negative: -4h in EDT, -5h in EST). */
 function nyOffset(utcMs: number): number {
   const p = Object.fromEntries(nyFormat.formatToParts(utcMs).map((x) => [x.type, Number(x.value)]));

@@ -6,6 +6,7 @@ import { weekRange } from "@/lib/season";
 import type { WeekMoves } from "@/lib/snapshot-rules";
 import type { Snapshot } from "@/lib/snapshots";
 import { formatDiff, leadOf, type Lead, type ManagerGames, type RosterRow } from "@/lib/week-view";
+import { AsOf, Meter, pct, signed } from "./AnalyticsBits";
 import { RecomputeButton } from "./RecomputeButton";
 import { WeekTabs } from "./WeekTabs";
 
@@ -27,27 +28,11 @@ export type WeekData = {
 
 type Props = { me: Duo; week: number; when: string; label: string; started: boolean; data: WeekData | null };
 
-const PERCENT = 100;
-const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
-const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
 const RIGHT = { textAlign: "right" } as const;
 /** Box score order for a player's week, the way stat lines usually read. */
 const LINE_CATS = ["pts", "reb", "ast", "stl", "blk", "tpm", "to", "fg", "ft"].map((k) => CATS.find((c) => c.key === k)!);
 const leadClass = (lead: Lead) => (lead === 1 ? "up" : lead === -1 ? "down" : "");
 const value = (line: StatLine | null, cat: Category) => (line ? catValue(line, cat) : null);
-
-/** When a saved snapshot was computed, so stale suggestions are obvious. */
-function AsOf({ asOf }: { asOf: Date | null }) {
-  return <p className="note" style={{ marginTop: 6 }}>{asOf ? `As of ${asOf.toLocaleString()}` : "Not computed yet"}</p>;
-}
-
-function Meter({ value }: { value: number }) {
-  return (
-    <>
-      <span className="meter"><i style={{ width: pct(value) }} /></span> <span className="num">{pct(value)}</span>
-    </>
-  );
-}
 
 /** One week's screen: matchup, moves, rosters and the teammate head-to-head, as tabs. */
 export function WeekView({ me, week, when, label, started, data }: Props) {
@@ -112,7 +97,7 @@ function GamesRows({ g, left, more, mine }: { g: DuoGames; left: number; more: b
       <tr className={mine ? "mine" : ""}>
         <td><b>{g.duo.name}</b></td>
         <td style={RIGHT} className="num"><b>{g.managers.reduce((n, m) => n + m.played, 0)}</b></td>
-        <td style={RIGHT} className={`num${more ? " lead" : ""}`}><b>{Math.round(left)}</b>{more && <span className="tag" style={{ marginLeft: 6 }}>More left</span>}</td>
+        <td style={RIGHT} className={`num${more ? " lead" : ""}`}><b>{Math.round(left)}</b>{more && <span className="tag" style={{ display: "block", width: "fit-content", marginLeft: "auto", marginTop: 4, whiteSpace: "nowrap" }}>More left</span>}</td>
       </tr>
     </>
   );
@@ -136,7 +121,7 @@ function MatchupTab({ data, started }: { data: WeekData; started: boolean }) {
         <div className="scroll" style={{ marginTop: 8 }}>
           <table>
             <thead>
-              <tr><th>Category</th><th style={RIGHT}>You</th><th style={RIGHT}>Them</th><th style={RIGHT}>±</th><th style={RIGHT}>Projected ±</th></tr>
+              <tr><th>Category</th><th style={RIGHT}>You</th><th style={RIGHT}>Them</th><th style={RIGHT}>±</th><th style={{ ...RIGHT, whiteSpace: "normal" }}>Projected ±</th></tr>
             </thead>
             <tbody>
               {w.cats.map((c) => {

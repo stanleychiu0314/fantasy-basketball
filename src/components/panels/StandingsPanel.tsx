@@ -100,7 +100,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
                 {ranked && (delta > 0 ? <small className="up">▲{delta}</small> : delta < 0 ? <small className="down">▼{-delta}</small> : <small className="flat">-</small>)}
               </span>
               <span className="nm">{r.duo.name}{sub && <small>{sub}</small>}</span>
-              <span className="rec">{r.w}-{r.l}-{r.t}<span className="cats"> · {r.catW}-{r.catL}-{r.catT} cats</span></span>
+              <span className="rec">{r.w}-{r.l}-{r.t}<span className="cats"><span className="sep"> · </span>{r.catW}-{r.catL}-{r.catT} cats</span></span>
               <span className="c">{r.played ? r.pct.toFixed(3).replace(/^0/, "") : ".000"}</span>
               <span className="hs">
                 {r.results.length ? (

@@ -1,9 +1,10 @@
 import Link from "next/link";
 import type { Duo } from "@/types/league";
 import { CATS, formatValue } from "@/lib/scoring";
-import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea, type WeekReport } from "@/lib/analytics";
-import { weekRange } from "@/lib/season";
+import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea } from "@/lib/analytics";
+import { formatEt, weekRange } from "@/lib/season";
 import type { TeammateReport } from "@/lib/teammates";
+import { AsOf, Meter, signed } from "./AnalyticsBits";
 import { RefreshProjections } from "./RefreshProjections";
 import { RecomputeButton } from "./RecomputeButton";
 
@@ -11,38 +12,7 @@ type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: numb
 type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
 type Overview = { season: SeasonReport; trades: TradeIdea[]; tradesAsOf: string | null };
 
-const PERCENT = 100;
-const pct = (x: number) => `${Math.round(x * PERCENT)}%`;
-const signed = (x: number) => `${x >= 0 ? "+" : ""}${x.toFixed(2)}`;
 const names = (ps: RatedPlayer[]) => ps.map((p) => p.name).join(" + ");
-
-/** When a saved snapshot was computed, so stale suggestions are obvious. */
-function AsOf({ asOf }: { asOf: string | null }) {
-  return <p className="note" style={{ marginTop: 6 }}>{asOf ? `As of ${new Date(asOf).toLocaleString()}` : "Not computed yet"}</p>;
-}
-
-function Meter({ value }: { value: number }) {
-  return (
-    <>
-      <span className="meter"><i style={{ width: pct(value) }} /></span> <span className="num">{pct(value)}</span>
-    </>
-  );
-}
-
-function TopBar({ me, eyebrow, back }: { me: Duo; eyebrow: string; back: { href: string; label: string } }) {
-  return (
-    <header className="top" style={{ paddingBlock: 0 }}>
-      <div>
-        <p className="eyebrow">{eyebrow}</p>
-        <h1>{me.name} <span>analytics</span></h1>
-        <p className="sub">{me.a} + {me.b}, scored as one duo.</p>
-      </div>
-      <div className="pills">
-        <Link className="btn" href={back.href}>{back.label}</Link>
-      </div>
-    </header>
-  );
-}
 
 /** The admin home: matchup buttons, you vs your partner, season analysis, trades, then projection data. */
 export function AnalyticsOverview({ me, info, weeks, teammates, analysis }: { me: Duo; info: DataInfo; weeks: WeekLink[]; teammates: TeammateReport; analysis: Overview | null }) {
@@ -77,7 +47,7 @@ export function AnalyticsOverview({ me, info, weeks, teammates, analysis }: { me
           {info.playerCount
             ? `${info.playerCount} players from ${info.sources.join(", ") || "no projection source"}. Each player's projection is blended with his real games: they count equally at ${PRIOR_GAMES} games, and real stats take over after that. Most games played so far: ${info.gamesPlayed}.`
             : "No projections stored yet. Pull them from ESPN to start."}
-          {info.updatedAt ? ` Last refreshed ${new Date(info.updatedAt).toLocaleString()}.` : ""}
+          {info.updatedAt ? ` Last refreshed ${formatEt(info.updatedAt)}.` : ""}
         </p>
         <RefreshProjections />
       </section>
@@ -120,111 +90,6 @@ function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
         Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date.
       </p>
     </section>
-  );
-}
-
-/** One week's matchup screen: the projection against that week's opponent, then pickups. */
-export function WeekMatchup(props: { me: Duo; week: number; when: string; label: string; report: WeekReport | null; started: boolean; asOf: string | null }) {
-  return (
-    <div className="wrap adm">
-      <TopBar me={props.me} eyebrow={props.when} back={{ href: "/admin/analytics", label: "Back to overview" }} />
-      <WeekSection {...props} />
-    </div>
-  );
-}
-
-function WeekSection({ week, label, report: w, started, asOf }: { week: number; label: string; report: WeekReport | null; started: boolean; asOf: string | null }) {
-  const title = `${label ? `${label} · ` : ""}Week ${week} · ${weekRange(week)}`;
-  if (!w) {
-    return (
-      <section className="card">
-        <p className="eyebrow">{title}</p>
-        <p className="note" style={{ marginTop: 6 }}>No matchup to show: either you have no game this week, or projections have not been loaded yet.</p>
-      </section>
-    );
-  }
-  return (
-    <>
-      <section className="card">
-        <p className="eyebrow">{title}</p>
-        <h2 className="h2" style={{ fontSize: "1.8rem", marginTop: 4 }}>vs {w.opponent.name}</h2>
-        <p style={{ marginTop: 6 }}>
-          <span className="big">{pct(w.winChance)}</span>
-          <span className="note"> to win the week · {w.expectedCats.toFixed(1)} - {(CATS.length - w.expectedCats).toFixed(1)} expected categories · games {started ? "left" : "this week"}: you {Math.round(w.myGames)}, them {Math.round(w.theirGames)}</span>
-        </p>
-        <div className="scroll" style={{ marginTop: 8 }}>
-          <table>
-            <thead><tr><th>Category</th><th style={{ textAlign: "right" }}>You</th><th style={{ textAlign: "right" }}>Them</th><th>Your chance</th></tr></thead>
-            <tbody>
-              {w.cats.map((c) => (
-                <tr key={c.cat.key}>
-                  <td><b>{c.cat.label}</b></td>
-                  <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.mine)}</td>
-                  <td style={{ textAlign: "right" }} className="num">{formatValue(c.cat, c.theirs)}</td>
-                  <td><Meter value={c.winChance} /></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-        <p className="note" style={{ marginTop: 8 }}>
-          {started ? "Stats already played this week plus a projection for the games left. " : "Projected from each player's games this week. "}
-          Players listed OUT count for zero games; each manager fills 10 lineup spots a day, best players first.
-        </p>
-      </section>
-
-      <section className="card">
-        <p className="eyebrow">Pickups for this week</p>
-        <AsOf asOf={asOf} />
-        <RecomputeButton week={week} />
-        {w.pickups.length === 0 ? (
-          <p className="note" style={{ marginTop: 6 }}>No free agent beats anyone on your rosters this week.</p>
-        ) : (
-          <div className="scroll" style={{ marginTop: 8 }}>
-            <table>
-              <thead><tr><th>Add</th><th>Drop</th><th style={{ textAlign: "right" }}>This week</th><th style={{ textAlign: "right" }}>Rest of season</th></tr></thead>
-              <tbody>
-                {w.pickups.map((p) => (
-                  <tr key={`${p.dropFrom}-${p.add.playerId}`}>
-                    <td>
-                      <b>{p.add.name}</b>
-                      {p.stream && <span className="tag verdict weakness" style={{ marginLeft: 6 }}>1-week stream</span>}
-                      <div className="note">{p.addGames} games · for {p.dropFrom}</div>
-                    </td>
-                    <td>{p.drop ? p.drop.name : <span className="note">Nobody · open roster spot</span>}</td>
-                    <td style={{ textAlign: "right" }} className={`num ${p.weekGain >= 0 ? "up" : "down"}`}>{signed(p.weekGain)}</td>
-                    <td style={{ textAlign: "right" }} className={`num ${p.seasonGain >= 0 ? "up" : "down"}`}>{signed(p.seasonGain)}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-        <p className="note" style={{ marginTop: 8 }}>
-          Change in expected categories won. Ranked by this week plus the rest of the season. A &ldquo;1-week stream&rdquo; helps now but
-          costs you later, so drop him again after the week. With an open roster spot (someone moved to IR) there is nothing to drop.
-        </p>
-      </section>
-
-      {w.targets.length > 0 && (
-        <section className="card">
-          <p className="eyebrow">Categories you are losing this week</p>
-          <div style={{ display: "grid", gap: 10, marginTop: 8 }}>
-            {w.targets.map((t) => (
-              <div key={t.cat.key}>
-                <b>{t.cat.label}</b> <span className="note">({pct(t.winChance)} chance)</span>
-                <div className="paid-list" style={{ marginTop: 4 }}>
-                  {t.players.map((p) => (
-                    <span key={p.player.playerId} className="tag">{p.player.name} · {p.games}g</span>
-                  ))}
-                </div>
-              </div>
-            ))}
-          </div>
-          <p className="note" style={{ marginTop: 8 }}>Best free agents for each category this week, counting how many games they play.</p>
-        </section>
-      )}
-    </>
   );
 }
 
