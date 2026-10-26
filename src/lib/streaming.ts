@@ -1,4 +1,5 @@
 import type { PlayerMeta, RatedPlayer } from "@/lib/analytics";
+import type { NbaGame } from "@/lib/espn";
 
 /** A team with this many games in the window is worth streaming from. */
 export const STREAM_MIN_GAMES = 4;
@@ -16,6 +17,24 @@ export type StreamingReport = {
   candidates: { playerId: number; name: string; abbrev: string; games: number; favorable: number; unfavorable: number; value: number }[];
 };
 
+type TeamGames = Map<number, { day: number; opponent: number | null }[]>;
+
+/** Each NBA team's games in day order, the shape buildStreaming reads. */
+export function gamesByTeam(games: NbaGame[]): TeamGames {
+  const out: TeamGames = new Map();
+  for (const g of [...games].sort((a, b) => a.day - b.day)) {
+    out.set(g.proTeamId, [...(out.get(g.proTeamId) ?? []), { day: g.day, opponent: g.opponentProTeamId }]);
+  }
+  return out;
+}
+
+/**
+ * True when every team has an abbreviation and every game an opponent. Schedule rows
+ * stored before migration 0003 have neither, which makes streaming blank and all zeros.
+ */
+export const scheduleComplete = (games: TeamGames, abbrevs: Map<number, string>) =>
+  games.size > 0 && [...games].every(([id, list]) => abbrevs.has(id) && list.every((g) => g.opponent !== null));
+
 type Slate = { games: number; favorable: number; unfavorable: number };
 
 /**
@@ -24,7 +43,7 @@ type Slate = { games: number; favorable: number; unfavorable: number };
  */
 export function buildStreaming(args: {
   days: number[];
-  games: Map<number, { day: number; opponent: number | null }[]>;
+  games: TeamGames;
   defenseRank: Map<number, number>;
   abbrevs: Map<number, string>;
   rated: Map<number, RatedPlayer>;

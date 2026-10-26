@@ -15,6 +15,14 @@ export const isMondayUtc = (at: Date) => at.getUTCDay() === MONDAY;
 export type WeekMoves = { pickups: Pickup[]; targets: CategoryTarget[]; streaming: StreamingReport | null };
 
 /**
+ * Streaming saved from schedule rows that had no abbreviations or opponents (both are
+ * written by the same upsert, so a blank abbreviation means the opponents were missing
+ * too and every favorable/unfavorable count is a false 0). Such a snapshot is rebuilt.
+ */
+export const streamingIncomplete = ({ streaming }: WeekMoves) =>
+  !!streaming && [...streaming.teams, ...streaming.candidates].some((r) => !r.abbrev);
+
+/**
  * Drop suggested players who have been rostered since the snapshot was computed.
  * Rosters sync every few minutes while the snapshot is daily or weekly.
  */

@@ -5,12 +5,12 @@ import { CATS, catValue, formatValue, type Category } from "@/lib/scoring";
 import { weekRange } from "@/lib/season";
 import type { WeekMoves } from "@/lib/snapshot-rules";
 import type { Snapshot } from "@/lib/snapshots";
-import { formatDiff, leadOf, type Lead, type ManagerGames, type RosterRow } from "@/lib/week-view";
+import { formatDiff, leadOf, type Lead, type ManagerGames, type RosterRow, type StarPill } from "@/lib/week-view";
 import { AsOf, Meter, pct, signed } from "./AnalyticsBits";
 import { RecomputeButton } from "./RecomputeButton";
 import { WeekTabs } from "./WeekTabs";
 
-export type DuoGames = { duo: Duo; managers: ManagerGames[] };
+export type DuoGames = { duo: Duo; managers: ManagerGames[]; stars: StarPill[] };
 export type RosterBox = { manager: string; duo: string; rows: RosterRow[] };
 
 /** Everything the week screen shows once projections and rosters are loaded. */
@@ -67,39 +67,47 @@ export function WeekView({ me, week, when, label, started, data }: Props) {
   );
 }
 
+/** Two columns, my duo then the opponent, each with its total, its managers and its top drafted players. They stack on phones. */
 function GamesTable({ games }: { games: WeekData["games"] }) {
   const left = games.map((g) => g.managers.reduce((n, m) => n + m.left, 0));
   const ahead = left[0] === left[1] ? -1 : left[0] > left[1] ? 0 : 1;
   return (
-    <div className="scroll" style={{ marginTop: 8 }}>
-      <table>
-        <thead><tr><th>Manager</th><th style={RIGHT}>Played</th><th style={RIGHT}>Left</th></tr></thead>
-        <tbody>
-          {games.map((g, i) => (
-            <GamesRows key={g.duo.id} g={g} left={left[i]} more={ahead === i} mine={i === 0} />
-          ))}
-        </tbody>
-      </table>
+    <div className="two" style={{ marginTop: 8 }}>
+      {games.map((g, i) => (
+        <GamesColumn key={g.duo.id} g={g} left={left[i]} more={ahead === i} mine={i === 0} />
+      ))}
     </div>
   );
 }
 
-function GamesRows({ g, left, more, mine }: { g: DuoGames; left: number; more: boolean; mine: boolean }) {
+function GamesColumn({ g, left, more, mine }: { g: DuoGames; left: number; more: boolean; mine: boolean }) {
   return (
-    <>
-      {g.managers.map((m) => (
-        <tr key={m.key}>
-          <td>{m.name}</td>
-          <td style={RIGHT} className="num">{m.played}</td>
-          <td style={RIGHT} className="num">{Math.round(m.left)}</td>
-        </tr>
-      ))}
-      <tr className={mine ? "mine" : ""}>
-        <td><b>{g.duo.name}</b></td>
-        <td style={RIGHT} className="num"><b>{g.managers.reduce((n, m) => n + m.played, 0)}</b></td>
-        <td style={RIGHT} className={`num${more ? " lead" : ""}`}><b>{Math.round(left)}</b>{more && <span className="tag" style={{ display: "block", width: "fit-content", marginLeft: "auto", marginTop: 4, whiteSpace: "nowrap" }}>More left</span>}</td>
-      </tr>
-    </>
+    <div>
+      <div className="scroll">
+        <table>
+          <thead><tr><th>{mine ? "Your duo" : "Opponent"}</th><th style={RIGHT}>Played</th><th style={RIGHT}>Left</th></tr></thead>
+          <tbody>
+            <tr className={mine ? "mine" : ""}>
+              <td><b>{g.duo.name}</b></td>
+              <td style={RIGHT} className="num"><b>{g.managers.reduce((n, m) => n + m.played, 0)}</b></td>
+              <td style={RIGHT} className={`num${more ? " lead" : ""}`}><b>{Math.round(left)}</b>{more && <span className="tag" style={{ display: "block", width: "fit-content", marginLeft: "auto", marginTop: 4, whiteSpace: "nowrap" }}>More left</span>}</td>
+            </tr>
+            {g.managers.map((m) => (
+              <tr key={m.key}>
+                <td>{m.name}</td>
+                <td style={RIGHT} className="num">{m.played}</td>
+                <td style={RIGHT} className="num">{Math.round(m.left)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      {g.stars.length > 0 && (
+        <div className="paid-list" aria-label={`${g.duo.name}'s top drafted players and their games this week`}>
+          {g.stars.map((p) => <span key={p.playerId} className="tag">{p.name} {p.games}</span>)}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -111,8 +119,9 @@ function MatchupTab({ data, started }: { data: WeekData; started: boolean }) {
         <p className="eyebrow">Games this week</p>
         <GamesTable games={games} />
         <p className="note" style={{ marginTop: 8 }}>
-          Played counts active lineup games so far. Left is projected for the days after today: each manager fills 10 lineup spots a day,
-          and players listed OUT or on IR count for zero.
+          Played counts active lineup games so far. Left is projected for the rest of the week, including today&apos;s games not
+          started yet: each manager fills 10 lineup spots a day, and players listed OUT or on IR count for zero. Pills: each duo&apos;s
+          top 5 players by this league&apos;s draft pick, with their games this week.
         </p>
       </section>
 
@@ -336,7 +345,7 @@ function RostersTab({ boxes }: { boxes: RosterBox[] }) {
       </div>
       <p className="note">
         G is games played this week in the active lineup; the line is this week&apos;s totals from those games. Left counts NBA games
-        after today (OUT and IR count for zero). Dropped players are listed because their games this week still count.
+        still to play, today&apos;s included until they start (OUT and IR count for zero). Dropped players are listed because their games this week still count.
       </p>
     </>
   );
@@ -350,7 +359,10 @@ function TeammateTab({ t }: { t: WeekData["teammates"] }) {
       <p className="eyebrow">{t.me.name} vs {t.mate.name} · this week</p>
       <p style={{ marginTop: 6 }}>
         <span className="big">{count(1)} - {count(-1)}</span>
-        <span className="note"> categories{count(0) ? ` · ${count(0)} tied` : ""} · games played: {t.me.name} {t.me.played}, {t.mate.name} {t.mate.played}</span>
+        <span className="note">
+          {" "}categories{count(0) ? ` · ${count(0)} tied` : ""} · games played: {t.me.name} {t.me.played}, {t.mate.name} {t.mate.played}
+          {" "}· projected games left: {t.me.name} {Math.round(t.me.left)}, {t.mate.name} {Math.round(t.mate.left)}
+        </span>
       </p>
       <div className="scroll" style={{ marginTop: 8 }}>
         <table>

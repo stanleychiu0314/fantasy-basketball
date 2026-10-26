@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import type { Duo, LeagueConfig, LeagueState } from "@/types/league";
 import { memberKeys, pairsFor } from "@/lib/scoring";
 import { formatEt, PLAYOFF_WEEKS, PUNISHED_PLACES, PUNISHMENTS, SEASON_WEEKS, weekRange } from "@/lib/season";
-import { computeBracket, gamesForWeek, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
+import { computeBracket, isPlayoffWeek, weekLabel } from "@/lib/playoffs";
 import {
   dismissTradeAlertAction,
   saveConfigAction,
@@ -13,7 +13,6 @@ import {
   syncAction,
   type ActionResult,
 } from "@/app/admin/actions";
-import { MatchupCard } from "../MatchupCard";
 import { WeekChips } from "../WeekChips";
 
 /** Pending flag, last result message and a runner that refreshes the page after a server action. */
@@ -230,16 +229,6 @@ export function AdminSettings({ state }: { state: LeagueState }) {
           <button className="btn" onClick={() => setConfig(state.config)}>Discard</button>
           <button className="btn primary" disabled={pending || !state.hasDatabase} onClick={() => run(() => saveConfigAction(config))}>Save settings</button>
         </div>
-      </div>
-
-      <div className="mcs">
-        {gamesForWeek(draft, week, bracket).map((g, i) =>
-          g.a && g.b ? (
-            <MatchupCard key={`${g.a.id}-${g.b.id}`} state={state} week={week} A={g.a} B={g.b} label={g.label || undefined} seedA={g.seedA} seedB={g.seedB} />
-          ) : (
-            <p key={i} className="note">{g.label}: teams not set yet.</p>
-          ),
-        )}
       </div>
     </>
   );

@@ -9,11 +9,14 @@ export const ADMIN_TABS = [
 
 export type AdminTab = (typeof ADMIN_TABS)[number][0];
 
+// Correct scores stays reachable at /admin?tab=scores but is no longer linked in the tab bar.
+const UNLINKED_TABS: readonly AdminTab[] = ["scores"];
+
 /** The `?tab=` value, falling back to Analytics for anything unknown. */
 export const parseTab = (raw: string | string[] | undefined): AdminTab =>
   ADMIN_TABS.find(([id]) => id === raw)?.[0] ?? "analytics";
 
-/** Admin chrome: header, no-database banner and the three tabs (plain links, so each tab renders on the server). */
+/** Admin chrome: header, no-database banner and the linked tabs (plain links, so each tab renders on the server). */
 export function AdminShell({ tab, name, hasDatabase, children }: { tab: AdminTab; name: string; hasDatabase: boolean; children: React.ReactNode }) {
   return (
     <div className="wrap adm">
@@ -30,7 +33,7 @@ export function AdminShell({ tab, name, hasDatabase, children }: { tab: AdminTab
 
       <nav className="nav" aria-label="Admin sections" style={{ marginBottom: 0 }}>
         <div className="nav-in" role="tablist">
-          {ADMIN_TABS.map(([id, label]) => (
+          {ADMIN_TABS.filter(([id]) => !UNLINKED_TABS.includes(id)).map(([id, label]) => (
             <Link key={id} className="tab" role="tab" aria-selected={tab === id} href={id === "analytics" ? "/admin" : `/admin?tab=${id}`}>
               {label}
             </Link>

@@ -107,6 +107,15 @@ function nyWallToUtc(dateUtcMs: number, hour: number, minute: number): number {
   return guess - nyOffset(guess - nyOffset(guess));
 }
 
+/** ESPN game day (scoring period, 1 = opening night) of a UTC-midnight date such as weekBounds returns. */
+export const dayOfDate = (dateUtcMs: number) => Math.floor((dateUtcMs - SEASON_START) / MS_PER_DAY) + 1;
+
+/** The ESPN game day at an instant. Game days follow New York's calendar, so 9 PM ET Monday is still Monday. */
+export function gameDayAt(now = Date.now()): number {
+  const p = Object.fromEntries(nyFormat.formatToParts(now).map((x) => [x.type, Number(x.value)]));
+  return dayOfDate(Date.UTC(p.year, p.month - 1, p.day));
+}
+
 /**
  * Where a matchup week is in its life. A week starts at 00:00 New York time on its first
  * day and reads "pending" from 23:59 New York time on its last day (late West Coast games

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { Pickup, RatedPlayer } from "@/lib/analytics";
 import { CATS } from "@/lib/scoring";
-import { filterStillAvailable, isMondayUtc, TRADES_KEY, weekMovesKey, type WeekMoves } from "@/lib/snapshot-rules";
+import { filterStillAvailable, isMondayUtc, streamingIncomplete, TRADES_KEY, weekMovesKey, type WeekMoves } from "@/lib/snapshot-rules";
 
 const player = (playerId: number): RatedPlayer => ({ playerId, name: `P${playerId}`, perGame: {} as RatedPlayer["perGame"], value: 1, z: {}, actualGames: 0 });
 const pickup = (add: number): Pickup => ({ add: player(add), addGames: 3, drop: null, dropFrom: "Stanley", weekGain: 0.5, seasonGain: 0, stream: false });
@@ -25,6 +25,22 @@ describe("filterStillAvailable", () => {
   it("keeps everything when rosters are unknown, and keeps a null streaming report", () => {
     expect(filterStillAvailable(moves, undefined)).toEqual(moves);
     expect(filterStillAvailable({ ...moves, streaming: null }, {}).streaming).toBeNull();
+  });
+});
+
+describe("streamingIncomplete", () => {
+  const streaming = { teams: [{ proTeamId: 18, abbrev: "NY", games: 4, favorable: 1, unfavorable: 0 }], candidates: [candidate(2)] };
+  const moves = (s: WeekMoves["streaming"]): WeekMoves => ({ pickups: [], targets: [], streaming: s });
+
+  it("flags streaming saved without team abbreviations", () => {
+    expect(streamingIncomplete(moves({ ...streaming, teams: [{ ...streaming.teams[0], abbrev: "" }] }))).toBe(true);
+    expect(streamingIncomplete(moves({ ...streaming, candidates: [{ ...candidate(2), abbrev: "" }] }))).toBe(true);
+  });
+
+  it("leaves complete, empty and skipped streaming alone", () => {
+    expect(streamingIncomplete(moves(streaming))).toBe(false);
+    expect(streamingIncomplete(moves({ teams: [], candidates: [] }))).toBe(false);
+    expect(streamingIncomplete(moves(null))).toBe(false);
   });
 });
 

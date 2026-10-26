@@ -1,7 +1,7 @@
 import "server-only";
 import { sql } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
-import { fetchDraftPicks, fetchNbaSchedule, fetchPlayerPool } from "@/lib/espn";
+import { fetchDraftPicks, fetchNbaSchedule, fetchPlayerPool, type NbaSchedule } from "@/lib/espn";
 import type { PlayerInput, PlayerMeta } from "@/lib/analytics";
 
 const ESPN_PROJECTION = "espn";
@@ -57,19 +57,29 @@ export async function refreshProjections(): Promise<{ ok: boolean; message: stri
         },
       });
   }
-  // Upsert so rows stored before opponents were tracked pick them up, and reschedules land.
-  if (schedule.status === "ok" && schedule.data.games.length) {
-    const { games, abbrevs } = schedule.data;
-    await db
-      .insert(schema.nbaGames)
-      .values(games.map((g) => ({ ...g, abbrev: abbrevs.get(g.proTeamId) ?? null })))
-      .onConflictDoUpdate({
-        target: [schema.nbaGames.proTeamId, schema.nbaGames.day],
-        set: { opponentProTeamId: sql`excluded.opponent_pro_team_id`, abbrev: sql`excluded.abbrev` },
-      });
-  }
+  if (schedule.status === "ok") await storeNbaSchedule(schedule.data);
   const withGames = pool.data.filter((p) => p.actual).length;
   return { ok: true, message: `Stored ${pool.data.length} players (${withGames} with games played)` };
+}
+
+/** Upsert the NBA schedule, so rows stored before opponents were tracked pick them up, and reschedules land. */
+async function storeNbaSchedule({ games, abbrevs }: NbaSchedule): Promise<void> {
+  if (!db || !games.length) return;
+  await db
+    .insert(schema.nbaGames)
+    .values(games.map((g) => ({ ...g, abbrev: abbrevs.get(g.proTeamId) ?? null })))
+    .onConflictDoUpdate({
+      target: [schema.nbaGames.proTeamId, schema.nbaGames.day],
+      set: { opponentProTeamId: sql`excluded.opponent_pro_team_id`, abbrev: sql`excluded.abbrev` },
+    });
+}
+
+/** Fetch and store just the NBA schedule (the cheap part of a refresh). Null when ESPN's schedule is unavailable. */
+export async function refreshNbaSchedule(): Promise<NbaSchedule | null> {
+  const schedule = await fetchNbaSchedule();
+  if (schedule.status !== "ok") return null;
+  await storeNbaSchedule(schedule.data);
+  return schedule.data;
 }
 
 export type AnalyticsData = {

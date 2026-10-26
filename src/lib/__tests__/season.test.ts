@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatEt, weekBounds, weekLockTime, weekPhase } from "@/lib/season";
+import { formatEt, gameDayAt, weekBounds, weekLockTime, weekPhase } from "@/lib/season";
 
 // Week 1 is Tue Oct 20 to Sun Oct 25 2026 (EDT, UTC-4). Week 2 is Oct 26 to Nov 1;
 // DST ends 2am Sun Nov 1, so Nov 1 evening is EST (UTC-5).
@@ -55,5 +55,14 @@ describe("formatEt", () => {
   it("shows New York time whatever the server zone, across the DST change", () => {
     expect(formatEt("2026-10-26T10:04:00Z")).toBe("Mon, Oct 26, 6:04 AM ET");
     expect(formatEt(Date.UTC(2026, 10, 2, 10, 4))).toBe("Mon, Nov 2, 5:04 AM ET");
+  });
+});
+
+describe("gameDayAt", () => {
+  it("follows New York's calendar date, not UTC's", () => {
+    expect(gameDayAt(Date.UTC(2026, 9, 20, 4, 0))).toBe(1);
+    // Sun Oct 25 11:59 PM EDT is day 6; Mon Oct 26 9 PM EDT (Tue in UTC) is still day 7.
+    expect(gameDayAt(Date.UTC(2026, 9, 26, 3, 59))).toBe(6);
+    expect(gameDayAt(Date.UTC(2026, 9, 27, 1, 0))).toBe(7);
   });
 });

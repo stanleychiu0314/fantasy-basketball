@@ -14,6 +14,15 @@ describe("teammateReport", () => {
     expect(total).toEqual({ a: 2, b: 1, ties: 6 });
   });
 
+  it("keeps each category's values and winner for the week breakdown", () => {
+    const scores = { 1: { d1a: line({ pts: 100, to: 10 }), d1b: line({ pts: 90, to: 20 }) } };
+    const cats = teammateReport(scores, duo, 1).months[0].weeks[0].cats;
+    expect(cats.find((c) => c.key === "pts")).toEqual({ key: "pts", a: 100, b: 90, winner: "a" });
+    expect(cats.find((c) => c.key === "to")).toEqual({ key: "to", a: 10, b: 20, winner: "a" });
+    // No attempts on either side: no percentage, so a tie.
+    expect(cats.find((c) => c.key === "fg")).toEqual({ key: "fg", a: null, b: null, winner: "tie" });
+  });
+
   it("skips weeks missing either manager and groups weeks by start month", () => {
     const win = { d1a: line({ pts: 2 }), d1b: line({ pts: 1 }) };
     // Week 1 starts Oct 20, week 2 Oct 26, week 3 Nov 2 (2026).

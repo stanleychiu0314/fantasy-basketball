@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
-import type { GameWindow, RatedPlayer } from "@/lib/analytics";
+import type { GameWindow, PlayerMeta, RatedPlayer } from "@/lib/analytics";
 import { CATS, emptyLine, FIELDS } from "@/lib/scoring";
-import { formatDiff, gamesPlayed, leadOf, managerGames, managersOf, rosterRows } from "@/lib/week-view";
+import { formatDiff, gamesPlayed, leadOf, managerGames, managersOf, rosterRows, topDrafted, weekWindow } from "@/lib/week-view";
 import type { Duo, PlayerWeek } from "@/types/league";
 
 const duo: Duo = { id: "d1", name: "Smashing Balls", a: "Adam", b: "Stanley", espnA: 2, espnB: 1 };
@@ -91,5 +91,53 @@ describe("rosterRows", () => {
 
   it("leaves today unknown before the week starts", () => {
     expect(rosterRows({ ...base, playsToday: null }).every((r) => r.today === null)).toBe(true);
+  });
+});
+
+describe("weekWindow", () => {
+  // Week 2 is Mon Oct 26 (game day 7) to Sun Nov 1 (day 13). Team 1 plays days 7 and 9.
+  const meta = new Map<number, PlayerMeta>([
+    [1, { proTeamId: 1, injuryStatus: "ACTIVE", onTeamId: 1, draftPick: 1, adp: null }],
+    [2, { proTeamId: 1, injuryStatus: "ACTIVE", onTeamId: 1, draftPick: 2, adp: null }],
+    [3, { proTeamId: 1, injuryStatus: "OUT", onTeamId: 1, draftPick: 3, adp: null }],
+  ]);
+  const gameDays = new Map([[1, new Set([7, 9])]]);
+  const mondayNight = Date.UTC(2026, 9, 27, 1, 0); // 9 PM EDT Monday, already Tuesday in UTC
+  const playedToday = new Set([1]);
+
+  it("counts today's games for players who have not played yet, using New York's date", () => {
+    const { window, started } = weekWindow(2, meta, gameDays, { now: mondayNight, playedToday });
+    expect(started).toBe(true);
+    expect(window.days).toEqual([7, 8, 9, 10, 11, 12, 13]);
+    expect(window.gamesOf(1)).toBe(1);
+    expect(window.gamesOf(2)).toBe(2);
+    expect(window.gamesOf(3)).toBe(0);
+  });
+
+  it("counts the whole week before it starts, and with full", () => {
+    const sunday = Date.UTC(2026, 9, 25, 16, 0);
+    expect(weekWindow(2, meta, gameDays, { now: sunday }).started).toBe(false);
+    expect(weekWindow(2, meta, gameDays, { now: sunday }).window.gamesOf(1)).toBe(2);
+    expect(weekWindow(2, meta, gameDays, { now: mondayNight, playedToday, full: true }).window.gamesOf(1)).toBe(2);
+  });
+
+  it("drops days already gone and leaves nothing once the week is over", () => {
+    const wednesday = Date.UTC(2026, 9, 28, 16, 0);
+    expect(weekWindow(2, meta, gameDays, { now: wednesday }).window.gamesOf(2)).toBe(1);
+    expect(weekWindow(2, meta, gameDays, { now: Date.UTC(2026, 10, 3) }).window.days).toEqual([]);
+  });
+});
+
+describe("topDrafted", () => {
+  const pickMeta = (draftPick: number | null): PlayerMeta => ({ proTeamId: 1, injuryStatus: "ACTIVE", onTeamId: 1, draftPick, adp: null });
+  it("orders by draft pick, undrafted last, ties by value, and keeps the top few", () => {
+    const roster = [1, 2, 3, 4].map((id) => ({ id, name: `P${id}` }));
+    const meta = new Map([[1, pickMeta(30)], [2, pickMeta(null)], [3, pickMeta(4)], [4, pickMeta(null)]]);
+    const ratings = new Map([[2, rated(2, 1)], [4, rated(4, 9)]]);
+    expect(topDrafted(roster, meta, ratings, (id) => id, 3)).toEqual([
+      { playerId: 3, name: "P3", games: 3 },
+      { playerId: 1, name: "P1", games: 1 },
+      { playerId: 4, name: "P4", games: 4 },
+    ]);
   });
 });

@@ -3,7 +3,7 @@ import type { Duo } from "@/types/league";
 import { CATS, formatValue } from "@/lib/scoring";
 import { PRIOR_GAMES, type RatedPlayer, type SeasonReport, type TradeIdea } from "@/lib/analytics";
 import { formatEt, weekRange } from "@/lib/season";
-import type { TeammateReport } from "@/lib/teammates";
+import type { TeammateReport, TeammateWeek } from "@/lib/teammates";
 import { AsOf, Meter, signed } from "./AnalyticsBits";
 import { RefreshProjections } from "./RefreshProjections";
 import { RecomputeButton } from "./RecomputeButton";
@@ -77,7 +77,7 @@ function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
             <tbody>
               {report.months.flatMap((m) => [
                 ...m.weeks.map((w) => (
-                  <tr key={w.week}><td>Week {w.week} · {weekRange(w.week)}</td>{cells(w)}</tr>
+                  <tr key={w.week}><td><WeekBreakdown me={me} week={w} /></td>{cells(w)}</tr>
                 )),
                 <tr key={m.label}><td><b>{m.label}</b></td>{cells(m.total)}</tr>,
               ])}
@@ -87,9 +87,37 @@ function TeammateSection({ me, report }: { me: Duo; report: TeammateReport }) {
         </div>
       )}
       <p className="note" style={{ marginTop: 8 }}>
-        Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date.
+        Categories each of you won in a week, comparing your own team totals. Fewer turnovers wins TO. Ties are counted, and months follow the week&apos;s start date. Tap a week to see every category.
       </p>
     </section>
+  );
+}
+
+/** A week label that opens to every category: each partner's value and who won it. */
+function WeekBreakdown({ me, week }: { me: Duo; week: TeammateWeek }) {
+  const right = { textAlign: "right" } as const;
+  return (
+    <details>
+      <summary style={{ cursor: "pointer" }}>Week {week.week} · {weekRange(week.week)}</summary>
+      <div className="eb" style={{ marginTop: 8, padding: 8 }}>
+        <table>
+          <thead><tr><th>Cat</th><th style={right}>{me.a}</th><th style={right}>{me.b}</th><th>Won</th></tr></thead>
+          <tbody>
+            {CATS.map((cat, i) => {
+              const c = week.cats[i];
+              return (
+                <tr key={cat.key}>
+                  <td>{cat.label}</td>
+                  <td style={right} className={`num${c.winner === "a" ? " lead" : ""}`}>{formatValue(cat, c.a)}</td>
+                  <td style={right} className={`num${c.winner === "b" ? " lead" : ""}`}>{formatValue(cat, c.b)}</td>
+                  <td>{c.winner === "tie" ? "Tie" : c.winner === "a" ? me.a : me.b}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </details>
   );
 }
 

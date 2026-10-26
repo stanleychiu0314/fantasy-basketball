@@ -244,6 +244,14 @@ async function loadWithoutDatabase(): Promise<LeagueState> {
   };
 }
 
+/** Players with stats stored for a game day, bench included: ESPN only adds them once a game has started. */
+export async function playersWithStatsOn(day: number): Promise<Set<number>> {
+  if (!db) return new Set();
+  const t = schema.playerDayStats;
+  const rows = await db.select({ playerId: t.playerId }).from(t).where(eq(t.day, day));
+  return new Set(rows.map((r) => r.playerId));
+}
+
 /** Each player's totals for one week, active-lineup days only, keyed to league members. */
 export async function playerWeek(week: number): Promise<PlayerWeek[]> {
   if (!db) return [];

@@ -1,4 +1,5 @@
-import { lineupTotals, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
+import { lineupCap, lineupTotals, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
+import { dayOfDate, gameDayAt, weekBounds } from "@/lib/season";
 import { formatValue, memberKeys, type Category } from "@/lib/scoring";
 import type { Duo, MemberKey, PlayerWeek, StatLine } from "@/types/league";
 
@@ -6,6 +7,41 @@ import type { Duo, MemberKey, PlayerWeek, StatLine } from "@/types/league";
 
 const TIE_EPSILON = 1e-12;
 const OUT = "OUT";
+/** Players per duo shown as pills under the games table. */
+export const TOP_DRAFTED = 5;
+
+/**
+ * Games each player has left in a week. Before the week starts that is the whole week.
+ * During it, today and the days after: today's games count only for players with no
+ * stats stored for today yet (`playedToday`), since ESPN adds a player's day stats once
+ * his game starts and from then on they are in the live totals. Players listed OUT
+ * count for zero. With `full`, every day of the week counts, as if it had not started
+ * (what the saved week moves use).
+ */
+export function weekWindow(
+  week: number,
+  meta: Map<number, PlayerMeta>,
+  gameDays: Map<number, Set<number>>,
+  { full = false, now = Date.now(), playedToday = new Set<number>() }: { full?: boolean; now?: number; playedToday?: ReadonlySet<number> } = {},
+): { window: GameWindow; started: boolean } {
+  const [start, end] = weekBounds(week);
+  const first = dayOfDate(start);
+  const last = dayOfDate(end);
+  const today = gameDayAt(now);
+  const started = today >= first;
+  const live = started && !full;
+  const from = live ? today : first;
+  const days = Array.from({ length: Math.max(0, last - from + 1) }, (_, i) => from + i);
+  const playsOn = (playerId: number, day: number) => {
+    const m = meta.get(playerId);
+    if (!m || m.injuryStatus === OUT || !gameDays.get(m.proTeamId)?.has(day)) return false;
+    return !(live && day === today && playedToday.has(playerId));
+  };
+  const gamesOf = (playerId: number) => days.filter((d) => playsOn(playerId, d)).length;
+  // Day by day: each manager's lineup is set daily, so each day's 10 spots are simulated.
+  // shortcut: today still offers all 10 spots even if some were used by games already played; fine while few teams fill 10 in one day.
+  return { window: { gamesOf, cap: lineupCap(days.length), days, playsOn }, started };
+}
 
 export type Manager = { name: string; key: MemberKey; team: number | null };
 export type ManagerGames = Manager & { played: number; left: number };
@@ -40,6 +76,27 @@ export function managerGames(
     played: gamesPlayed(rows, m.key),
     left: m.team === null ? 0 : lineupTotals(rosters[m.team] ?? [], rated, window).games,
   }));
+}
+
+export type StarPill = { playerId: number; name: string; games: number };
+
+/**
+ * A duo's top players by this league's draft pick (earliest pick first, undrafted last,
+ * ties broken by player value), each with his games this week.
+ */
+export function topDrafted(
+  roster: { id: number; name: string }[],
+  meta: Map<number, PlayerMeta>,
+  rated: Map<number, RatedPlayer>,
+  gamesOf: (playerId: number) => number,
+  limit = TOP_DRAFTED,
+): StarPill[] {
+  const pick = (id: number) => meta.get(id)?.draftPick ?? Infinity;
+  const value = (id: number) => rated.get(id)?.value ?? -Infinity;
+  return [...roster]
+    .sort((a, b) => pick(a.id) - pick(b.id) || value(b.id) - value(a.id))
+    .slice(0, limit)
+    .map((p) => ({ playerId: p.id, name: p.name, games: gamesOf(p.id) }));
 }
 
 /** Who leads one category, with turnovers counted lower-is-better. */

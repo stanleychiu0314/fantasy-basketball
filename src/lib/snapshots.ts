@@ -2,11 +2,13 @@ import "server-only";
 import { eq } from "drizzle-orm";
 import { db, schema } from "@/lib/db";
 import { tradeIdeas, weekReport, type TradeIdea } from "@/lib/analytics";
-import { loadAnalyticsContext, myGame, weekWindow, type AnalyticsContext } from "@/lib/analytics-context";
+import { loadAnalyticsContext, myGame, type AnalyticsContext } from "@/lib/analytics-context";
 import { fetchNbaDefense } from "@/lib/espn";
+import { refreshNbaSchedule } from "@/lib/projections";
 import { emptyLine } from "@/lib/scoring";
-import { filterStillAvailable, TRADES_KEY, weekMovesKey, type WeekMoves } from "@/lib/snapshot-rules";
-import { buildStreaming } from "@/lib/streaming";
+import { filterStillAvailable, streamingIncomplete, TRADES_KEY, weekMovesKey, type WeekMoves } from "@/lib/snapshot-rules";
+import { buildStreaming, gamesByTeam, scheduleComplete } from "@/lib/streaming";
+import { weekWindow } from "@/lib/week-view";
 
 export type Snapshot<T> = { computedAt: Date; data: T };
 export type SnapshotResult<T> = { ok: true; message: string; snapshot: Snapshot<T> } | { ok: false; message: string };
@@ -48,14 +50,17 @@ export async function computeWeekMoves(week: number, ctx?: AnalyticsContext): Pr
     playedMine: emptyLine(),
     playedTheirs: emptyLine(),
   });
+  // Stored schedule rows without opponents (never refreshed since migration 0003) are refetched and saved first.
+  const fresh = scheduleComplete(games, abbrevs) ? null : await refreshNbaSchedule();
   const defense = await fetchNbaDefense();
   // Without defense ranks every game would look neutral, which is misleading, so streaming is left out.
   const streaming = defense.status === "ok"
     ? buildStreaming({
         days: window.days ?? [],
-        games,
+        games: fresh ? gamesByTeam(fresh.games) : games,
         defenseRank: new Map([...defense.data].map(([id, d]) => [id, d.rank])),
-        abbrevs, rated, meta, freeAgents,
+        abbrevs: fresh?.abbrevs ?? abbrevs,
+        rated, meta, freeAgents,
       })
     : null;
   const snapshot = await save(weekMovesKey(week), "week_moves", week, { pickups: report.pickups, targets: report.targets, streaming });
@@ -72,11 +77,14 @@ export async function computeTrades(ctx?: AnalyticsContext): Promise<SnapshotRes
 
 /**
  * A week's saved moves minus players rostered since. If none are saved yet (first
- * deploy, before any cron run), they are computed and stored now.
+ * deploy, before any cron run), or the saved streaming was built from a schedule
+ * without opponents, they are computed and stored now.
  */
 export async function loadWeekMoves(week: number, ctx: AnalyticsContext): Promise<Snapshot<WeekMoves> | null> {
   const saved = await readSnapshot<WeekMoves>(weekMovesKey(week));
-  const snap = saved ?? (await computeWeekMoves(week, ctx).then((r) => (r.ok ? r.snapshot : null)));
+  const usable = saved && !streamingIncomplete(saved.data) ? saved : null;
+  // A failed rebuild keeps the old snapshot rather than showing nothing.
+  const snap = usable ?? (await computeWeekMoves(week, ctx).then((r) => (r.ok ? r.snapshot : saved)));
   return snap && { ...snap, data: filterStillAvailable(snap.data, ctx.ready?.rosters) };
 }
 

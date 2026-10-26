@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { PlayerMeta, RatedPlayer } from "@/lib/analytics";
 import { parseNbaDefense, parseNbaSchedule, type EspnProSchedule, type EspnStandings } from "@/lib/espn";
-import { buildStreaming } from "@/lib/streaming";
+import { buildStreaming, gamesByTeam, scheduleComplete } from "@/lib/streaming";
 
 const rated = (playerId: number, value: number): RatedPlayer => ({ playerId, name: `P${playerId}`, perGame: {} as RatedPlayer["perGame"], value, z: {}, actualGames: 0 });
 const meta = (proTeamId: number, injuryStatus = "ACTIVE"): PlayerMeta => ({ proTeamId, injuryStatus, onTeamId: null, draftPick: null, adp: null });
@@ -41,6 +41,21 @@ describe("buildStreaming", () => {
   it("caps the candidate list", () => {
     const r = buildStreaming({ ...base, rated: new Map([[10, rated(10, 5)], [11, rated(11, 1)]]), meta: new Map([[10, meta(1)], [11, meta(2)]]), freeAgents: [10, 11], limit: 1 });
     expect(r.candidates).toHaveLength(1);
+  });
+});
+
+describe("gamesByTeam and scheduleComplete", () => {
+  it("groups games per team in day order", () => {
+    const g = gamesByTeam([{ proTeamId: 1, day: 5, opponentProTeamId: 2 }, { proTeamId: 1, day: 3, opponentProTeamId: 4 }]);
+    expect(g.get(1)).toEqual([{ day: 3, opponent: 4 }, { day: 5, opponent: 2 }]);
+  });
+
+  it("is incomplete without abbreviations or opponents, as rows stored before migration 0003 are", () => {
+    const games = new Map([[1, [{ day: 3, opponent: 4 }]]]);
+    expect(scheduleComplete(games, new Map([[1, "NY"]]))).toBe(true);
+    expect(scheduleComplete(games, new Map())).toBe(false);
+    expect(scheduleComplete(new Map([[1, [{ day: 3, opponent: null }]]]), new Map([[1, "NY"]]))).toBe(false);
+    expect(scheduleComplete(new Map(), new Map())).toBe(false);
   });
 });
 
