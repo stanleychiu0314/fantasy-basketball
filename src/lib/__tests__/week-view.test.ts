@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
 import type { GameWindow, PlayerMeta, RatedPlayer } from "@/lib/analytics";
 import { CATS, emptyLine, FIELDS } from "@/lib/scoring";
-import { formatDiff, gamesPlayed, leadOf, managerGames, managersOf, leagueTable, rosterRows, scheduleRows, topDrafted, weekDays, weekWindow } from "@/lib/week-view";
-import type { Duo, PlayerWeek } from "@/types/league";
+import { formatDiff, gamesPlayed, heatLevel, leadOf, managerGames, managersOf, leagueTable, rosterRows, scheduleRows, topDrafted, weekDays, weekWindow } from "@/lib/week-view";
+import type { Duo, PlayerWeek, StatLine } from "@/types/league";
 
 const duo: Duo = { id: "d1", name: "Smashing Balls", a: "Adam", b: "Stanley", espnA: 2, espnB: 1 };
 const cat = (key: string) => CATS.find((c) => c.key === key)!;
@@ -170,16 +170,51 @@ describe("scheduleRows", () => {
 });
 
 describe("leagueTable", () => {
-  it("ranks every rated player by value, names owners and marks both duos in the matchup", () => {
-    const duos: Duo[] = [duo, { id: "d2", name: "Rivals", a: "Ivan", b: "Scott", espnA: 3, espnB: 4 }, { id: "d3", name: "Others", a: "X", b: "Y", espnA: 5, espnB: 6 }];
-    const ratings = new Map([1, 2, 3, 4].map((id) => [id, rated(id, id)]));
-    const rows = leagueTable({ rated: ratings, rosters: { 1: [{ id: 1, name: "P1" }], 3: [{ id: 2, name: "P2" }], 5: [{ id: 3, name: "P3" }] }, duos, mine: "d1", theirs: "d2", gamesOf: () => 3, limit: 3 });
-    expect(rows.map((r) => [r.playerId, r.owner, r.side, r.games])).toEqual([
-      [4, null, null, 3],
-      [3, "X · Others", null, 3],
-      [2, "Ivan · Rivals", "theirs", 3],
+  const duos: Duo[] = [duo, { id: "d2", name: "Rivals", a: "Ivan", b: "Scott", espnA: 3, espnB: 4 }, { id: "d3", name: "Others", a: "X", b: "Y", espnA: 5, espnB: 6 }];
+  const wk = (playerId: number, games: number, p: Partial<StatLine>) => ({ playerId, name: `P${playerId}`, games, totals: { ...emptyLine(), ...p } });
+  const lines = [
+    wk(1, 2, { pts: 60, reb: 20, fgm: 20, fga: 40, to: 2 }), // 30 ppg
+    wk(2, 1, { pts: 10, reb: 5, fgm: 4, fga: 10, to: 6 }),
+    wk(3, 3, { pts: 30, reb: 9, fgm: 12, fga: 30, to: 3 }), // 10 ppg
+    wk(4, 0, {}),
+  ];
+  const rows = leagueTable({ lines, rosters: { 1: [{ id: 1, name: "P1" }], 3: [{ id: 2, name: "P2" }], 5: [{ id: 3, name: "P3" }] }, duos, mine: "d1", theirs: "d2" });
+
+  it("rates only players with a game this week, on per-game lines, best first", () => {
+    expect(rows.map((r) => r.playerId)).toEqual([1, 3, 2]);
+    expect(rows[0].perGame.pts).toBe(30);
+    expect(rows[0].games).toBe(2);
+    // The value is the sum of the category z-scores, and z-scores center on this week's pool.
+    for (const r of rows) expect(r.value).toBeCloseTo(Object.values(r.z).reduce((a, b) => a + b, 0));
+    expect(rows.reduce((n, r) => n + r.z.pts, 0)).toBeCloseTo(0);
+  });
+
+  it("flips turnovers so fewer is better", () => {
+    const z = (id: number) => rows.find((r) => r.playerId === id)!.z.to;
+    expect(z(1)).toBeGreaterThan(z(2)); // 1 TO a game beats 6
+  });
+
+  it("names owners with their duo index and marks both duos in the matchup", () => {
+    expect(rows.map((r) => [r.playerId, r.owner, r.duoIndex, r.side])).toEqual([
+      [1, "Stanley · Smashing Balls", 0, "mine"],
+      [3, "X · Others", 2, null],
+      [2, "Ivan · Rivals", 1, "theirs"],
     ]);
-    expect(leagueTable({ rated: ratings, rosters: { 1: [{ id: 1, name: "P1" }] }, duos, mine: "d1", theirs: "d2", gamesOf: () => 0 }).at(-1))
-      .toMatchObject({ playerId: 1, owner: "Stanley · Smashing Balls", side: "mine" });
+    expect(leagueTable({ lines: [wk(9, 1, { pts: 1 })], rosters: {}, duos, mine: "d1", theirs: "d2" })[0]).toMatchObject({ owner: null, duoIndex: null });
+  });
+
+  it("is empty until someone has played", () => {
+    expect(leagueTable({ lines: [wk(4, 0, {})], rosters: {}, duos, mine: "d1", theirs: "d2" })).toEqual([]);
+  });
+});
+
+describe("heatLevel", () => {
+  it("is full green at +2, nothing at 0, full red at -2, clamped beyond", () => {
+    expect(heatLevel(2)).toBe(1);
+    expect(heatLevel(3.5)).toBe(1);
+    expect(heatLevel(1)).toBe(0.5);
+    expect(heatLevel(0)).toBe(0);
+    expect(heatLevel(-1)).toBe(-0.5);
+    expect(heatLevel(-9)).toBe(-1);
   });
 });

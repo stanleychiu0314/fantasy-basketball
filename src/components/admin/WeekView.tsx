@@ -1,11 +1,12 @@
 import Link from "next/link";
+import type { CSSProperties } from "react";
 import type { Duo, StatLine } from "@/types/league";
 import type { WeekReport } from "@/lib/analytics";
 import { CATS, catValue, formatValue, type Category } from "@/lib/scoring";
 import { weekRange } from "@/lib/season";
 import type { WeekMoves } from "@/lib/snapshot-rules";
 import type { Snapshot } from "@/lib/snapshots";
-import { formatDiff, leadOf, type LeagueRow, type Lead, type ManagerGames, type RosterRow, type ScheduleRow, type StarPill } from "@/lib/week-view";
+import { formatDiff, heatLevel, leadOf, type LeagueRow, type Lead, type ManagerGames, type RosterRow, type ScheduleRow, type StarPill } from "@/lib/week-view";
 import { AsOf, Meter, pct, signed } from "./AnalyticsBits";
 import { RecomputeButton } from "./RecomputeButton";
 import { SubTabs, WeekTabs } from "./WeekTabs";
@@ -367,38 +368,55 @@ function RosterSchedule({ schedule }: { schedule: WeekData["schedule"] }) {
 const perGame = (line: StatLine, cat: Category) => (cat.pct ? formatValue(cat, catValue(line, cat)) : (catValue(line, cat) ?? 0).toFixed(1));
 const LEAGUE_CATS = ["pts", "tpm", "reb", "ast", "stl", "blk", "to", "fg", "ft"].map((k) => CATS.find((c) => c.key === k)!);
 
+/** Strongest heat is this much of the win/loss color mixed into the cell, which keeps text readable in both themes. */
+const HEAT_MAX_PCT = 45;
+/** Cell background from a weekly z-score: green above 0, red below, none at 0. */
+const heatStyle = (z: number): CSSProperties => {
+  const level = heatLevel(z);
+  return { "--heat-c": level >= 0 ? "var(--win)" : "var(--loss)", "--heat-p": `${Math.round(Math.abs(level) * HEAT_MAX_PCT)}%` } as CSSProperties;
+};
+/** The duo's color token; the palette has one per duo, in league order. */
+const duoStyle = (i: number) => ({ "--duo": `var(--duo-${i + 1})` }) as CSSProperties;
+
 function LeagueTab({ rows }: { rows: LeagueRow[] }) {
   return (
     <section className="card">
-      <p className="eyebrow">League · top {rows.length} by value</p>
-      <div className="scroll" style={{ marginTop: 8 }}>
-        <table>
-          <thead>
-            <tr>
-              <th style={RIGHT}>#</th><th>Player</th><th>Owner</th><th style={RIGHT}>Games</th>
-              {LEAGUE_CATS.map((c) => <th key={c.key} style={RIGHT}>{c.label}</th>)}
-            </tr>
-          </thead>
-          <tbody>
-            {rows.map((r, i) => (
-              <tr key={r.playerId} className={r.side === "mine" ? "mine" : ""}>
-                <td style={RIGHT} className="num">{i + 1}</td>
-                <td><b>{r.name}</b></td>
-                <td>
-                  {r.side
-                    ? <span className={`tag ${r.side === "mine" ? "hi" : "verdict weakness"}`}>{r.owner}</span>
-                    : <span className={r.owner ? "" : "note"}>{r.owner ?? "Free agent"}</span>}
-                </td>
-                <td style={RIGHT} className="num">{r.games}</td>
-                {LEAGUE_CATS.map((c) => <td key={c.key} style={RIGHT} className="num">{perGame(r.perGame, c)}</td>)}
+      <p className="eyebrow">League · this week · top {rows.length} by value</p>
+      {rows.length === 0 ? (
+        <p className="note" style={{ marginTop: 6 }}>Fills in once games are played this week.</p>
+      ) : (
+        <div className="scroll lg-box" style={{ marginTop: 8 }}>
+          <table className="lg">
+            <thead>
+              <tr>
+                <th style={RIGHT}>#</th><th>Player</th><th>Owner</th><th style={RIGHT}>Games</th>
+                {LEAGUE_CATS.map((c) => <th key={c.key} style={RIGHT}>{c.label}</th>)}
               </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+            </thead>
+            <tbody>
+              {rows.map((r, i) => (
+                <tr key={r.playerId} className={r.side === "mine" ? "mine" : ""}>
+                  <td style={RIGHT} className="num">{i + 1}</td>
+                  <td><b>{r.name}</b></td>
+                  <td>
+                    <span className={`tag${r.duoIndex === null ? "" : " duo"}`} style={r.duoIndex === null ? undefined : duoStyle(r.duoIndex)} title={r.owner ?? "Free agent"}>
+                      {r.owner ?? "Free agent"}
+                    </span>
+                  </td>
+                  <td style={RIGHT} className="num">{r.games}</td>
+                  {LEAGUE_CATS.map((c) => (
+                    <td key={c.key} style={{ ...RIGHT, ...heatStyle(r.z[c.key] ?? 0) }} className="num zc">{perGame(r.perGame, c)}</td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
       <p className="note" style={{ marginTop: 8 }}>
-        Every player with a projection, rostered or free agent, ranked by 9-cat value. Stats are per game (projection blended with
-        real games). Games are his NBA games this week; OUT counts for zero. Your duo&apos;s players are highlighted, the opponent&apos;s are in red.
+        This week&apos;s games only, bench games included: per-game stats, ranked by 9-cat value against everyone who has played this
+        week. Green cells are well above this week&apos;s average, red well below; fewer turnovers is greener. Your duo&apos;s rows are
+        highlighted.
       </p>
     </section>
   );

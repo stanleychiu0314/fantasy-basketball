@@ -105,6 +105,34 @@ const contribution = (line: StatLine, cat: Category, leaguePct: Record<string, n
 };
 
 /**
+ * Standard 9-cat z-scores against a pool of per-game lines: each category's mean and
+ * spread come from the pool, percentages count by impact, and turnovers are flipped so
+ * higher is always better. `value` is the sum across categories.
+ */
+export function zScorer(pool: StatLine[]): (line: StatLine) => { z: Record<string, number>; value: number } {
+  const leaguePct: Record<string, number> = {};
+  for (const cat of CATS.filter((c) => c.pct)) {
+    const [made, att] = cat.pct!;
+    const totalAtt = pool.reduce((s, x) => s + x[att], 0);
+    leaguePct[cat.key] = totalAtt > 0 ? pool.reduce((s, x) => s + x[made], 0) / totalAtt : 0;
+  }
+  const stats = CATS.map((cat) => {
+    const vals = pool.map((x) => contribution(x, cat, leaguePct));
+    const mean = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
+    const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length || 1)) || 1;
+    return { cat, mean, sd };
+  });
+  return (line: StatLine) => {
+    const z: Record<string, number> = {};
+    for (const { cat, mean, sd } of stats) {
+      const raw = (contribution(line, cat, leaguePct) - mean) / sd;
+      z[cat.key] = cat.low ? -raw : raw;
+    }
+    return { z, value: Object.values(z).reduce((a, b) => a + b, 0) };
+  };
+}
+
+/**
  * Rate every player with standard 9-cat z-scores. The baseline is the top POOL_SIZE
  * players, found with a first pass over everyone.
  */
@@ -113,28 +141,7 @@ export function ratePlayers(players: PlayerInput[]): Map<number, RatedPlayer> {
     const perGame = blendPerGame(p);
     return perGame ? [{ p, perGame }] : [];
   });
-  const score = (pool: typeof lines) => {
-    const leaguePct: Record<string, number> = {};
-    for (const cat of CATS.filter((c) => c.pct)) {
-      const [made, att] = cat.pct!;
-      const totalAtt = pool.reduce((s, x) => s + x.perGame[att], 0);
-      leaguePct[cat.key] = totalAtt > 0 ? pool.reduce((s, x) => s + x.perGame[made], 0) / totalAtt : 0;
-    }
-    const stats = CATS.map((cat) => {
-      const vals = pool.map((x) => contribution(x.perGame, cat, leaguePct));
-      const mean = vals.reduce((a, b) => a + b, 0) / (vals.length || 1);
-      const sd = Math.sqrt(vals.reduce((a, b) => a + (b - mean) ** 2, 0) / (vals.length || 1)) || 1;
-      return { cat, mean, sd };
-    });
-    return (line: StatLine) => {
-      const z: Record<string, number> = {};
-      for (const { cat, mean, sd } of stats) {
-        const raw = (contribution(line, cat, leaguePct) - mean) / sd;
-        z[cat.key] = cat.low ? -raw : raw;
-      }
-      return { z, value: Object.values(z).reduce((a, b) => a + b, 0) };
-    };
-  };
+  const score = (pool: typeof lines) => zScorer(pool.map((x) => x.perGame));
   const firstPass = score(lines);
   const pool = [...lines].sort((a, b) => firstPass(b.perGame).value - firstPass(a.perGame).value).slice(0, POOL_SIZE);
   const final = score(pool);

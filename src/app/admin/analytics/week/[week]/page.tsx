@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { isAdmin } from "@/lib/auth";
 import { weekReport } from "@/lib/analytics";
-import { playersWithStatsOn, playerWeek } from "@/lib/league";
+import { playersWithStatsOn, playerWeek, playerWeekAll } from "@/lib/league";
 import { emptyLine } from "@/lib/scoring";
 import { gameDayAt } from "@/lib/season";
 import { leagueTable, managerGames, managersOf, rosterRows, scheduleRows, topDrafted, weekDays, weekWindow } from "@/lib/week-view";
@@ -36,11 +36,11 @@ export default async function WeekPage({ params }: PageProps<"/admin/analytics/w
   const now = { mine: started ? played(state, week, me) : emptyLine(), theirs: started ? played(state, week, opponent) : emptyLine() };
   // The live matchup projection is cheap; the free-agent search comes from the saved snapshot.
   const report = weekReport({ duos: state.config.duos, rosters, rated, me, opponent, window, freeAgents: [], playedMine: now.mine, playedTheirs: now.theirs });
-  const [moves, rows] = await Promise.all([loadWeekMoves(week, ctx), playerWeek(week)]);
+  const [moves, rows, weekLines] = await Promise.all([loadWeekMoves(week, ctx), playerWeek(week), playerWeekAll(week)]);
 
   // The window drops today's games already played; for "plays today" those still count.
   const playsToday = started ? (id: number) => playedToday.has(id) || (window.playsOn?.(id, today) ?? false) : null;
-  // Pills and the League tab show games over the whole week, not just what is left.
+  // Pills show games over the whole week, not just what is left.
   const wholeWeek = weekWindow(week, meta, gameDays, { full: true }).window;
   const rosterOf = (team: number | null) => (team === null ? [] : (rosters[team] ?? []));
   const sides = [me, opponent].map((duo) => {
@@ -57,7 +57,7 @@ export default async function WeekPage({ params }: PageProps<"/admin/analytics/w
       rows: scheduleRows(managers.map((m) => ({ name: m.name, roster: rosterOf(m.team) })), meta, rated, gameDays, days.map((d) => d.day)),
     })),
   };
-  const league = leagueTable({ rated, rosters, duos: state.config.duos, mine: me.id, theirs: opponent.id, gamesOf: wholeWeek.gamesOf });
+  const league = leagueTable({ lines: weekLines, rosters, duos: state.config.duos, mine: me.id, theirs: opponent.id });
   const boxes = sides.flatMap(({ duo, managers }) =>
     managers.map((m) => ({
       manager: m.name,

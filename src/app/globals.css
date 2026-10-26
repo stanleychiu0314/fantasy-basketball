@@ -22,6 +22,11 @@ img{max-width:100%}
   --fg:#F6EEE4; --muted:#A99A8B; --accent:#FF7B1C; --accent-ink:#1A0F05; --accent-soft:#3A2312;
   --gold:#F5C04A; --win:#5FD18A; --loss:#F0645A; --tie:#E5B84B; color-scheme:dark}
 
+/* Duo colors for owner pills (League tab), one per duo in league order. Dark variants are lighter so the pill text stays readable. */
+:root{--duo-1:#2463C7; --duo-2:#7B44C2; --duo-3:#B4307A; --duo-4:#0B7F8F; --duo-5:#8A5A2B; --duo-6:#4F5B6B}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--duo-1:#82AEF7; --duo-2:#BD9AF0; --duo-3:#F08BC2; --duo-4:#5CCFDB; --duo-5:#D9A574; --duo-6:#AAB6C6}}
+:root[data-theme="dark"]{--duo-1:#82AEF7; --duo-2:#BD9AF0; --duo-3:#F08BC2; --duo-4:#5CCFDB; --duo-5:#D9A574; --duo-6:#AAB6C6}
+
 *{box-sizing:border-box}
 body{background:var(--bg);color:var(--fg);font-family:var(--body);font-size:15px;line-height:1.5;padding-inline:16px;padding-block:0 64px}
 .wrap{max-width:1040px;margin-inline:auto}
@@ -306,3 +311,19 @@ a.mini{text-decoration:none;color:inherit;transition:border-color .2s,transform 
 a.mini:hover{transform:translateY(-1px)}
 a.mini .go{grid-column:1/-1;color:var(--accent);font-weight:700;font-size:13px}
 a.mini .opp{grid-column:1/-1;font-family:var(--display);font-weight:800;font-size:1.6rem;text-transform:uppercase;line-height:1.05}
+
+/* League tab: duo pills, heat cells, sticky header and (on phones) pinned identity columns */
+.tag.duo{background:color-mix(in srgb,var(--duo) 16%,var(--surface));color:var(--duo)}
+.lg-box{max-height:75vh;overflow:auto}
+.lg thead th{position:sticky;top:0;z-index:2;background:var(--surface)}
+.lg tr.mine{--cell-bg:var(--accent-soft)}
+.lg td.zc{background:color-mix(in srgb,var(--heat-c,transparent) var(--heat-p,0%),var(--cell-bg,var(--surface)))}
+@media (max-width:700px){
+  .lg th:nth-child(-n+4),.lg td:nth-child(-n+4){position:sticky;z-index:1;background:var(--cell-bg,var(--surface))}
+  .lg thead th:nth-child(-n+4){z-index:3;background:var(--surface)}
+  .lg th:nth-child(1),.lg td:nth-child(1){left:0;width:28px;min-width:28px;max-width:28px}
+  .lg th:nth-child(2),.lg td:nth-child(2){left:28px;width:88px;min-width:88px;max-width:88px;white-space:normal}
+  .lg th:nth-child(3),.lg td:nth-child(3){left:116px;width:68px;min-width:68px;max-width:68px}
+  .lg th:nth-child(4),.lg td:nth-child(4){left:184px;width:56px;min-width:56px;max-width:56px;box-shadow:inset -1px 0 0 var(--line)}
+  .lg td:nth-child(3) .tag{max-width:100%;overflow:hidden;text-overflow:ellipsis;vertical-align:middle}
+}

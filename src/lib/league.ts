@@ -5,7 +5,9 @@ import type { EspnCache } from "@/lib/db/schema";
 import { fetchDay, fetchEspn, type EspnSnapshot, type RosterPlayer } from "@/lib/espn";
 import { defaultConfig, normalizeConfig, SEASON_START, weekFromDate, weekLockTime } from "@/lib/season";
 import { FIELDS, memberKeys } from "@/lib/scoring";
+import { gamesPlayedSql } from "@/lib/games-played";
 import { detectTeammateMoves } from "@/lib/trades";
+import type { WeekLine } from "@/lib/week-view";
 import type { LeagueConfig, LeagueState, MemberKey, PlayerWeek, RosterEntry, ScoreEdit, StatLine } from "@/types/league";
 
 const CONFIG_ROW_ID = 1;
@@ -252,13 +254,13 @@ export async function playersWithStatsOn(day: number): Promise<Set<number>> {
   return new Set(rows.map((r) => r.playerId));
 }
 
-/** Active-lineup games per week per member key, for every week stored. */
+/** Active-lineup games per week per member key, for every week stored. Empty (DNP) days are not games. */
 export async function memberGamesByWeek(config: LeagueConfig): Promise<Record<number, Record<MemberKey, number>>> {
   if (!db) return {};
   const members = teamToMember(config);
   const t = schema.playerDayStats;
   const rows = await db
-    .select({ week: t.week, teamId: t.espnTeamId, games: sql<number>`count(*)::int` })
+    .select({ week: t.week, teamId: t.espnTeamId, games: gamesPlayedSql() })
     .from(t)
     .where(eq(t.active, true))
     .groupBy(t.week, t.espnTeamId);
@@ -270,7 +272,29 @@ export async function memberGamesByWeek(config: LeagueConfig): Promise<Record<nu
   return out;
 }
 
-/** Each player's totals for one week, active-lineup days only, keyed to league members. */
+/** Every player's totals over one week's games, bench days included, for the League tab. */
+export async function playerWeekAll(week: number): Promise<WeekLine[]> {
+  if (!db) return [];
+  const t = schema.playerDayStats;
+  const sums = Object.fromEntries(FIELDS.map((f) => [f, sql<number>`sum(${t[f]})::int`]));
+  const rows = await db
+    .select({
+      playerId: t.playerId,
+      name: sql<string>`max(${t.playerName})`,
+      games: gamesPlayedSql(),
+      ...sums,
+    })
+    .from(t)
+    .where(eq(t.week, week))
+    .groupBy(t.playerId);
+  return rows.map((r) => {
+    const raw = r as Record<string, unknown>;
+    const totals = Object.fromEntries(FIELDS.map((f) => [f, Number(raw[f]) || 0])) as StatLine;
+    return { playerId: r.playerId, name: r.name, games: r.games, totals };
+  });
+}
+
+/** Each player's totals for one week, active-lineup days only, keyed to league members. Games skip empty (DNP) days. */
 export async function playerWeek(week: number): Promise<PlayerWeek[]> {
   if (!db) return [];
   const { config } = await readConfig();
@@ -282,7 +306,7 @@ export async function playerWeek(week: number): Promise<PlayerWeek[]> {
       playerId: t.playerId,
       name: sql<string>`max(${t.playerName})`,
       teamId: t.espnTeamId,
-      games: sql<number>`count(*)::int`,
+      games: gamesPlayedSql(),
       ...sums,
     })
     .from(t)

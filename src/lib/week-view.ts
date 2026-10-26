@@ -1,6 +1,6 @@
-import { lineupCap, lineupTotals, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
+import { lineupCap, lineupTotals, zScorer, type GameWindow, type PlayerMeta, type RatedPlayer, type TeamRosters } from "@/lib/analytics";
 import { dayOfDate, gameDayAt, weekBounds } from "@/lib/season";
-import { formatValue, memberKeys, type Category } from "@/lib/scoring";
+import { FIELDS, formatValue, memberKeys, type Category } from "@/lib/scoring";
 import type { Duo, MemberKey, PlayerWeek, StatLine } from "@/types/league";
 
 /** Pure rules behind the admin week screen, kept apart from the page so they can be unit-tested. */
@@ -11,6 +11,8 @@ const OUT = "OUT";
 export const TOP_DRAFTED = 5;
 /** Players listed in the League tab. */
 export const LEAGUE_TOP = 100;
+/** A weekly z-score this far from 0 gets the strongest heat color. */
+export const HEAT_FULL_Z = 2;
 const MS_PER_DAY = 86_400_000;
 const WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -140,52 +142,69 @@ export function scheduleRows(
     });
 }
 
+/** One player's totals over this week's games (bench days included). */
+export type WeekLine = { playerId: number; name: string; games: number; totals: StatLine };
+
 export type LeagueRow = {
   playerId: number;
   name: string;
-  value: number;
+  games: number;
   perGame: StatLine;
+  /** Weekly 9-cat value: z-scores summed, against everyone who played this week. */
+  value: number;
+  /** z-score per category key, turnovers flipped so higher is always better. */
+  z: Record<string, number>;
   /** "Manager · Duo", or null for a free agent. */
   owner: string | null;
+  /** Index of the owner's duo in the league's duo list (for its color), or null. */
+  duoIndex: number | null;
   side: "mine" | "theirs" | null;
-  games: number;
 };
 
-/** Every rated player (rostered or free agent) by 9-cat value, with who owns him and his games this week. */
+/**
+ * This week's league table: every player with a game this week, rated on his per-game
+ * line with the same z-scores as ratePlayers, but with this week's players as the pool.
+ */
 export function leagueTable(args: {
-  rated: Map<number, RatedPlayer>;
+  lines: WeekLine[];
   rosters: TeamRosters;
   duos: Duo[];
   mine: string;
   theirs: string;
-  gamesOf: (playerId: number) => number;
   limit?: number;
 }): LeagueRow[] {
-  const { rated, rosters, duos, mine, theirs, gamesOf, limit = LEAGUE_TOP } = args;
-  const teamOwner = new Map<number, { owner: string; side: LeagueRow["side"] }>();
-  for (const d of duos) {
+  const { lines, rosters, duos, mine, theirs, limit = LEAGUE_TOP } = args;
+  type Owner = Pick<LeagueRow, "owner" | "duoIndex" | "side">;
+  const teamOwner = new Map<number, Owner>();
+  duos.forEach((d, duoIndex) => {
     const side = d.id === mine ? "mine" : d.id === theirs ? "theirs" : null;
-    if (d.espnA !== null) teamOwner.set(d.espnA, { owner: `${d.a} · ${d.name}`, side });
-    if (d.espnB !== null) teamOwner.set(d.espnB, { owner: `${d.b} · ${d.name}`, side });
-  }
-  const ownerOf = new Map<number, { owner: string; side: LeagueRow["side"] }>();
+    if (d.espnA !== null) teamOwner.set(d.espnA, { owner: `${d.a} · ${d.name}`, duoIndex, side });
+    if (d.espnB !== null) teamOwner.set(d.espnB, { owner: `${d.b} · ${d.name}`, duoIndex, side });
+  });
+  const ownerOf = new Map<number, Owner>();
   for (const [team, players] of Object.entries(rosters)) {
-    const o = teamOwner.get(Number(team)) ?? { owner: `ESPN team ${team}`, side: null };
+    const o = teamOwner.get(Number(team)) ?? { owner: `ESPN team ${team}`, duoIndex: null, side: null };
     for (const p of players) ownerOf.set(p.id, o);
   }
-  return [...rated.values()]
+  const played = lines
+    .filter((l) => l.games > 0)
+    .map((l) => ({ ...l, perGame: Object.fromEntries(FIELDS.map((f) => [f, l.totals[f] / l.games])) as StatLine }));
+  const score = zScorer(played.map((l) => l.perGame));
+  return played
+    .map((l) => ({
+      playerId: l.playerId,
+      name: l.name,
+      games: l.games,
+      perGame: l.perGame,
+      ...score(l.perGame),
+      ...(ownerOf.get(l.playerId) ?? { owner: null, duoIndex: null, side: null }),
+    }))
     .sort((a, b) => b.value - a.value)
-    .slice(0, limit)
-    .map((p) => ({
-      playerId: p.playerId,
-      name: p.name,
-      value: p.value,
-      perGame: p.perGame,
-      owner: ownerOf.get(p.playerId)?.owner ?? null,
-      side: ownerOf.get(p.playerId)?.side ?? null,
-      games: gamesOf(p.playerId),
-    }));
+    .slice(0, limit);
 }
+
+/** Heat for a stat cell: z / HEAT_FULL_Z clamped to -1 (full red) .. 1 (full green); 0 is no color. */
+export const heatLevel = (z: number) => Math.max(-1, Math.min(1, z / HEAT_FULL_Z));
 
 /** Who leads one category, with turnovers counted lower-is-better. */
 export function leadOf(cat: Category, mine: number | null, theirs: number | null): Lead {
