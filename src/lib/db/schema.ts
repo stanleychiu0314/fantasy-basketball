@@ -142,6 +142,10 @@ export const nbaGames = pgTable(
     proTeamId: integer("pro_team_id").notNull(),
     /** ESPN scoring period: day 1 is opening night. */
     day: integer("day").notNull(),
+    /** The NBA team played that day; null for rows stored before opponents were tracked. */
+    opponentProTeamId: integer("opponent_pro_team_id"),
+    /** This team's ESPN abbreviation (e.g. "NY"), repeated per row so no extra table is needed. */
+    abbrev: text("abbrev"),
   },
   (t) => [primaryKey({ columns: [t.proTeamId, t.day] })],
 );

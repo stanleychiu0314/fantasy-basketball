@@ -57,9 +57,16 @@ export async function refreshProjections(): Promise<{ ok: boolean; message: stri
         },
       });
   }
-  // The schedule rarely changes, so it is only written the first time (or after a wipe).
-  if (schedule.status === "ok" && schedule.data.length) {
-    await db.insert(schema.nbaGames).values(schedule.data).onConflictDoNothing();
+  // Upsert so rows stored before opponents were tracked pick them up, and reschedules land.
+  if (schedule.status === "ok" && schedule.data.games.length) {
+    const { games, abbrevs } = schedule.data;
+    await db
+      .insert(schema.nbaGames)
+      .values(games.map((g) => ({ ...g, abbrev: abbrevs.get(g.proTeamId) ?? null })))
+      .onConflictDoUpdate({
+        target: [schema.nbaGames.proTeamId, schema.nbaGames.day],
+        set: { opponentProTeamId: sql`excluded.opponent_pro_team_id`, abbrev: sql`excluded.abbrev` },
+      });
   }
   const withGames = pool.data.filter((p) => p.actual).length;
   return { ok: true, message: `Stored ${pool.data.length} players (${withGames} with games played)` };
@@ -70,13 +77,17 @@ export type AnalyticsData = {
   meta: Map<number, PlayerMeta>;
   /** NBA team id -> its game days. */
   gameDays: Map<number, Set<number>>;
+  /** NBA team id -> its games with opponents (null where not stored yet), in day order. */
+  games: Map<number, { day: number; opponent: number | null }[]>;
+  /** NBA team id -> ESPN abbreviation. */
+  abbrevs: Map<number, string>;
   sources: string[];
   updatedAt: Date | null;
 };
 
 /** Everything the analytics page reads from the database. */
 export async function loadAnalyticsData(): Promise<AnalyticsData> {
-  const empty: AnalyticsData = { players: [], meta: new Map(), gameDays: new Map(), sources: [], updatedAt: null };
+  const empty: AnalyticsData = { players: [], meta: new Map(), gameDays: new Map(), games: new Map(), abbrevs: new Map(), sources: [], updatedAt: null };
   if (!db) return empty;
   const [lineRows, metaRows, gameRows] = await Promise.all([
     db.select().from(schema.playerProjections),
@@ -93,11 +104,19 @@ export async function loadAnalyticsData(): Promise<AnalyticsData> {
     if (!updatedAt || r.updatedAt > updatedAt) updatedAt = r.updatedAt;
   }
   const gameDays = new Map<number, Set<number>>();
-  for (const g of gameRows) (gameDays.get(g.proTeamId) ?? gameDays.set(g.proTeamId, new Set()).get(g.proTeamId)!).add(g.day);
+  const games = new Map<number, { day: number; opponent: number | null }[]>();
+  const abbrevs = new Map<number, string>();
+  for (const g of [...gameRows].sort((a, b) => a.day - b.day)) {
+    (gameDays.get(g.proTeamId) ?? gameDays.set(g.proTeamId, new Set()).get(g.proTeamId)!).add(g.day);
+    (games.get(g.proTeamId) ?? games.set(g.proTeamId, []).get(g.proTeamId)!).push({ day: g.day, opponent: g.opponentProTeamId });
+    if (g.abbrev) abbrevs.set(g.proTeamId, g.abbrev);
+  }
   return {
     players: [...byPlayer.values()],
     meta: new Map(metaRows.map((m) => [m.playerId, { proTeamId: m.proTeamId, injuryStatus: m.injuryStatus, onTeamId: m.onTeamId, draftPick: m.draftPick, adp: m.adp }])),
     gameDays,
+    games,
+    abbrevs,
     sources: [...new Set(lineRows.filter((r) => r.kind === "projection").map((r) => r.source))],
     updatedAt,
   };

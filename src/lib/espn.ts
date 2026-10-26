@@ -303,24 +303,82 @@ export async function fetchDraftPicks(): Promise<EspnResult<Map<number, number>>
   return { status: "ok", data: new Map((r.data.draftDetail?.picks ?? []).map((p) => [p.playerId, p.overallPickNumber])) };
 }
 
-type EspnProSchedule = { settings?: { proTeams?: { id: number; proGamesByScoringPeriod?: Record<string, unknown[]> }[] } };
+type EspnProGame = { homeProTeamId?: number; awayProTeamId?: number };
+export type EspnProSchedule = {
+  settings?: { proTeams?: { id: number; abbrev?: string; proGamesByScoringPeriod?: Record<string, EspnProGame[]> }[] };
+};
 
-/** Game days (ESPN scoring periods, day 1 = opening night) for every NBA team. */
-export async function fetchNbaSchedule(): Promise<EspnResult<{ proTeamId: number; day: number }[]>> {
+/** One NBA team's game on one day. */
+export type NbaGame = { proTeamId: number; day: number; opponentProTeamId: number | null };
+export type NbaSchedule = { games: NbaGame[]; abbrevs: Map<number, string> };
+
+/** ESPN lists free agents as a pseudo "team" with this id. */
+const FREE_AGENT_PRO_TEAM = 0;
+const PRO_SCHEDULE_URL = `https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/${ESPN_SEASON}?view=proTeamSchedules_wl`;
+
+/** Game days (ESPN scoring periods, day 1 = opening night), opponents and abbreviations for every NBA team. */
+export async function fetchNbaSchedule(): Promise<EspnResult<NbaSchedule>> {
   try {
-    const res = await fetch(`https://lm-api-reads.fantasy.espn.com/apis/v3/games/fba/seasons/${ESPN_SEASON}?view=proTeamSchedules_wl`, {
-      cache: "no-store",
-      signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-    });
+    const res = await fetch(PRO_SCHEDULE_URL, { cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
     if (!res.ok) return { status: "error", message: `ESPN schedule returned ${res.status}` };
-    const raw = (await res.json()) as EspnProSchedule;
-    const rows = (raw.settings?.proTeams ?? []).flatMap((t) =>
-      Object.entries(t.proGamesByScoringPeriod ?? {})
-        .filter(([, games]) => games.length > 0)
-        .map(([day]) => ({ proTeamId: t.id, day: Number(day) })),
-    );
-    return { status: "ok", data: rows };
+    return { status: "ok", data: parseNbaSchedule((await res.json()) as EspnProSchedule) };
   } catch (err) {
     return { status: "error", message: err instanceof Error ? err.message : "ESPN schedule request failed" };
   }
+}
+
+/** One row per team per game day; the opponent is whichever side of the game is not this team. */
+export function parseNbaSchedule(raw: EspnProSchedule): NbaSchedule {
+  const teams = (raw.settings?.proTeams ?? []).filter((t) => t.id !== FREE_AGENT_PRO_TEAM);
+  const games = teams.flatMap((t) =>
+    Object.entries(t.proGamesByScoringPeriod ?? {})
+      .filter(([, list]) => list.length > 0)
+      .map(([day, [game]]) => {
+        const opponent = game.homeProTeamId === t.id ? game.awayProTeamId : game.homeProTeamId;
+        return { proTeamId: t.id, day: Number(day), opponentProTeamId: opponent ?? null };
+      }),
+  );
+  return { games, abbrevs: new Map(teams.flatMap((t) => (t.abbrev ? [[t.id, t.abbrev] as const] : []))) };
+}
+
+type EspnStandingsEntry = { team?: { abbreviation?: string }; stats?: { name?: string; value?: number }[] };
+export type EspnStandings = { children?: { standings?: { entries?: EspnStandingsEntry[] } }[] };
+
+/** A team's defense: points allowed per game and its rank, 1 = fewest allowed. */
+export type NbaDefense = { pointsAllowed: number; rank: number };
+
+const STANDINGS_URL = `https://site.api.espn.com/apis/v2/sports/basketball/nba/standings?season=${ESPN_SEASON}`;
+const POINTS_ALLOWED_STAT = "avgPointsAgainst";
+
+/**
+ * Points allowed per game for every NBA team, keyed by fantasy proTeamId. ESPN's
+ * public standings carry it; its team ids are a different API, so teams are matched
+ * by abbreviation against the fantasy schedule.
+ */
+export async function fetchNbaDefense(): Promise<EspnResult<Map<number, NbaDefense>>> {
+  try {
+    const [standingsRes, schedule] = await Promise.all([
+      fetch(STANDINGS_URL, { cache: "no-store", signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) }),
+      fetchNbaSchedule(),
+    ]);
+    if (!standingsRes.ok) return { status: "error", message: `ESPN standings returned ${standingsRes.status}` };
+    if (schedule.status !== "ok") return schedule;
+    return { status: "ok", data: parseNbaDefense((await standingsRes.json()) as EspnStandings, schedule.data.abbrevs) };
+  } catch (err) {
+    return { status: "error", message: err instanceof Error ? err.message : "ESPN standings request failed" };
+  }
+}
+
+/** Rank teams by points allowed per game (fewest first). Teams whose abbreviation has no fantasy match are dropped. */
+export function parseNbaDefense(raw: EspnStandings, abbrevs: Map<number, string>): Map<number, NbaDefense> {
+  const idOf = new Map([...abbrevs].map(([id, abbrev]) => [abbrev, id]));
+  const rows = (raw.children ?? []).flatMap((c) =>
+    (c.standings?.entries ?? []).flatMap((e) => {
+      const id = idOf.get(e.team?.abbreviation ?? "");
+      const allowed = e.stats?.find((s) => s.name === POINTS_ALLOWED_STAT)?.value;
+      return id !== undefined && typeof allowed === "number" ? [{ id, allowed }] : [];
+    }),
+  );
+  rows.sort((a, b) => a.allowed - b.allowed || a.id - b.id);
+  return new Map(rows.map((r, i) => [r.id, { pointsAllowed: r.allowed, rank: i + 1 }]));
 }
