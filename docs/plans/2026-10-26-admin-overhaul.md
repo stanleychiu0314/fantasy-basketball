@@ -69,3 +69,18 @@ Each task checks its own screens at 375px. Task F checks every admin screen and 
 - Per-player daily stats: `player_day_stats` (active lineup only). NBA schedule: `nba_games`. Player status and draft slot: `players`.
 - ESPN live team totals come from `cumulativeScoreLive`, not `cumulativeScore`.
 - Analytics loader: `src/app/admin/analytics/context.ts` (`loadAnalyticsContext`, `weekWindow`, `played`, `myGame`, `cachedTradeIdeas`).
+
+## Status (update as tasks land)
+
+Sequencing changed from the table above: **C runs before B**, because both need schema changes and only one migration should be generated. C adds `nba_games.opponent_pro_team_id` to schema.ts without generating a migration; B adds `analytics_snapshots` and generates **one** migration covering both.
+
+| Task | Status |
+| --- | --- |
+| A | done, commit 36bf32d (not pushed). Phone layout of standings still to be checked in F |
+| C | done, commit (see git log). Defense: site.api.espn.com standings avgPointsAgainst, matched by abbrev. fetchNbaDefense() is not stored; B must call it |
+| B | done, commit 4f60dec. Migration 0003 needs Stanley to run `pnpm db:migrate` before any push. Pure helpers in src/lib/snapshot-rules.ts; loader moved to src/lib/analytics-context.ts; openWeeks uses the calendar |
+| D | in progress (careful): owns new src/components/admin/WeekView.tsx; must not edit AnalyticsView.tsx |
+| E | in progress (medium): owns AnalyticsView.tsx overview, AdminApp, /admin tabs |
+| F | waiting on all |
+
+Nothing is committed by workers; the orchestrator reviews, commits, then asks Stanley to run `pnpm db:migrate` and approve the push.
