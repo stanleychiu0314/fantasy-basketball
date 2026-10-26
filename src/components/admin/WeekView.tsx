@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { WeekPicker } from "./WeekPicker";
 import type { CSSProperties } from "react";
 import type { Duo, StatLine } from "@/types/league";
 import type { WeekReport } from "@/lib/analytics";
@@ -31,7 +32,7 @@ export type WeekData = {
   teammates: { me: ManagerGames; mate: ManagerGames; mine: StatLine | null; theirs: StatLine | null };
 };
 
-type Props = { me: Duo; week: number; when: string; label: string; started: boolean; data: WeekData | null };
+type Props = { me: Duo; week: number; when: string; last: number; label: string; started: boolean; data: WeekData | null };
 
 const RIGHT = { textAlign: "right" } as const;
 /** Box score order for a player's week, the way stat lines usually read. */
@@ -40,7 +41,7 @@ const leadClass = (lead: Lead) => (lead === 1 ? "up" : lead === -1 ? "down" : ""
 const value = (line: StatLine | null, cat: Category) => (line ? catValue(line, cat) : null);
 
 /** One week's screen: matchup, moves, rosters and the teammate head-to-head, as tabs. */
-export function WeekView({ me, week, when, label, started, data }: Props) {
+export function WeekView({ me, week, when, last, label, started, data }: Props) {
   const title = `${label ? `${label} · ` : ""}Week ${week} · ${weekRange(week)}`;
   return (
     <div className="wrap adm">
@@ -51,6 +52,7 @@ export function WeekView({ me, week, when, label, started, data }: Props) {
           <p className="sub">{me.a} + {me.b}, scored as one duo.</p>
         </div>
         <div className="pills">
+          <WeekPicker last={last} current={week} />
           <Link className="btn" href="/admin">Back to overview</Link>
         </div>
       </header>
@@ -62,7 +64,7 @@ export function WeekView({ me, week, when, label, started, data }: Props) {
         <WeekTabs
           tabs={[
             { id: "matchup", label: "Matchup", panel: <MatchupTab data={data} started={started} /> },
-            { id: "moves", label: "Moves", panel: <MovesTab week={week} moves={data.moves} /> },
+            ...(when === "Past week" ? [] : [{ id: "moves", label: "Moves", panel: <MovesTab week={week} moves={data.moves} /> }]),
             { id: "rosters", label: "Rosters", panel: <RostersTab boxes={data.boxes} schedule={data.schedule} /> },
             { id: "teammate", label: `You vs ${data.teammates.mate.name}`, panel: <TeammateTab t={data.teammates} /> },
             { id: "league", label: "League", panel: <LeagueTab rows={data.league} /> },

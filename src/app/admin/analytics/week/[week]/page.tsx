@@ -21,13 +21,15 @@ export default async function WeekPage({ params }: PageProps<"/admin/analytics/w
   const today = gameDayAt();
   const [ctx, playedToday] = await Promise.all([loadAnalyticsContext(), playersWithStatsOn(today)]);
   const { state, me, ready } = ctx;
-  // Only this week and next week are open for now; anything else goes back to the admin home.
+  // Past weeks stay viewable; nothing past next week has data yet.
   const open = openWeeks(state);
-  if (!open.includes(week)) redirect("/admin");
-  const when = week === open[0] ? "This week" : "Next week";
+  const last = open[open.length - 1];
+  if (!Number.isInteger(week) || week < 1 || week > last) redirect("/admin");
+  const past = week < open[0];
+  const when = past ? "Past week" : week === open[0] ? "This week" : "Next week";
 
   const game = myGame(state, me, week);
-  const base = { me, week, when, label: game?.label ?? "" };
+  const base = { me, week, when, last, label: game?.label ?? "" };
   if (!ready || !game) return <WeekView {...base} started={false} data={null} />;
 
   const { rated, rosters, meta, gameDays } = ready;
@@ -36,7 +38,8 @@ export default async function WeekPage({ params }: PageProps<"/admin/analytics/w
   const now = { mine: started ? played(state, week, me) : emptyLine(), theirs: started ? played(state, week, opponent) : emptyLine() };
   // The live matchup projection is cheap; the free-agent search comes from the saved snapshot.
   const report = weekReport({ duos: state.config.duos, rosters, rated, me, opponent, window, freeAgents: [], playedMine: now.mine, playedTheirs: now.theirs });
-  const [moves, rows, weekLines] = await Promise.all([loadWeekMoves(week, ctx), playerWeek(week), playerWeekAll(week)]);
+  // Pickups and streams only matter for weeks still ahead, so past weeks skip that search.
+  const [moves, rows, weekLines] = await Promise.all([past ? null : loadWeekMoves(week, ctx), playerWeek(week), playerWeekAll(week)]);
 
   // The window drops today's games already played; for "plays today" those still count.
   const playsToday = started ? (id: number) => playedToday.has(id) || (window.playsOn?.(id, today) ?? false) : null;

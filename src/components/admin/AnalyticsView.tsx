@@ -7,6 +7,7 @@ import type { TeammateReport, TeammateWeek } from "@/lib/teammates";
 import { AsOf, Meter, signed } from "./AnalyticsBits";
 import { RefreshProjections } from "./RefreshProjections";
 import { RecomputeButton } from "./RecomputeButton";
+import { WeekPicker } from "./WeekPicker";
 
 type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 type WeekLink = { week: number; when: string; game: { opponent: Duo; label: string } | null };
@@ -29,6 +30,7 @@ export function AnalyticsOverview({ me, info, weeks, teammates, analysis }: { me
           </Link>
         ))}
       </div>
+      <div className="pills"><WeekPicker last={weeks[weeks.length - 1]?.week ?? 1} /></div>
 
       <TeammateSection me={me} report={teammates} />
 

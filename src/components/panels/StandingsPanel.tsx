@@ -86,7 +86,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
 
       <div className="board" ref={tableRef}>
         <div className="row head">
-          <span>#</span><span>Duo</span><span>W-L-T</span><span>Pct</span><span className="hs">Last 5</span>
+          <span>#</span><span>Duo</span><span>Cats</span><span>Pct</span><span className="hs">Last 5</span>
         </div>
         {rows.map((r) => {
           const prev = prevRank?.get(r.duo.id);
@@ -100,7 +100,7 @@ export function StandingsPanel({ state, standings, onWeek }: Props) {
                 {ranked && (delta > 0 ? <small className="up">▲{delta}</small> : delta < 0 ? <small className="down">▼{-delta}</small> : <small className="flat">-</small>)}
               </span>
               <span className="nm">{r.duo.name}{sub && <small>{sub}</small>}</span>
-              <span className="rec">{r.w}-{r.l}-{r.t}<span className="cats"><span className="sep"> · </span>{r.catW}-{r.catL}-{r.catT} cats</span></span>
+              <span className="rec">{r.catW}-{r.catL}-{r.catT}</span>
               <span className="c">{r.played ? r.pct.toFixed(3).replace(/^0/, "") : ".000"}</span>
               <span className="hs">
                 {r.results.length ? (
