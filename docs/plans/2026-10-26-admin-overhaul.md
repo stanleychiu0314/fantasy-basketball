@@ -99,3 +99,5 @@ All tasks done locally on 26 Oct 2026. Waiting on Stanley to approve the push. O
 | R6 | **Week, You vs Adam tab:** add projected games left for Stanley and Adam. |
 | R7 | **Matchup tab, Games this week:** two columns. Left: Smashing Balls total, then Stanley, then Adam. Right: opponent duo total, then each opponent manager. Played and left for each. |
 | R8 | Under that table, small pills: for each duo, its top 5 players by this league's draft pick, with how many games each plays this week (e.g. "Luka 4"). |
+
+Round 2: done locally, commit efc4cf5, 72 tests pass. Waiting on Stanley to approve the push.
