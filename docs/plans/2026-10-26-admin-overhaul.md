@@ -78,9 +78,11 @@ Sequencing changed from the table above: **C runs before B**, because both need 
 | --- | --- |
 | A | done, commit 36bf32d (not pushed). Phone layout of standings still to be checked in F |
 | C | done, commit (see git log). Defense: site.api.espn.com standings avgPointsAgainst, matched by abbrev. fetchNbaDefense() is not stored; B must call it |
-| B | done, commit 4f60dec. Migration 0003 needs Stanley to run `pnpm db:migrate` before any push. Pure helpers in src/lib/snapshot-rules.ts; loader moved to src/lib/analytics-context.ts; openWeeks uses the calendar |
-| D | in progress (careful): owns new src/components/admin/WeekView.tsx; must not edit AnalyticsView.tsx |
-| E | in progress (medium): owns AnalyticsView.tsx overview, AdminApp, /admin tabs |
-| F | waiting on all |
+| B | done, commit 4f60dec. Migration 0003 applied by Stanley 26 Oct 2026. Pure helpers in src/lib/snapshot-rules.ts; loader moved to src/lib/analytics-context.ts; openWeeks uses the calendar |
+| D | done, commit b443d11 |
+| E | done, commit 50104bf. Note for F: an in-progress week with no games yet shows 9 ties in You vs Adam; week page back link should go straight to /admin |
+| F | done, commit ce18021. 375px checked by JS measurement; lower parts of screens by reasoning |
 
 Nothing is committed by workers; the orchestrator reviews, commits, then asks Stanley to run `pnpm db:migrate` and approve the push.
+
+All tasks done locally on 26 Oct 2026. Waiting on Stanley to approve the push. Open: Next.js printed a security advisory recommending an upgrade (not acted on).
