@@ -8,11 +8,14 @@ import { SEASON_START, weekBounds, weekFromDate } from "@/lib/season";
 import type { Duo, LeagueState, StatLine } from "@/types/league";
 
 /** The analytics pages are Stanley's: they always analyze the duo he is in. */
-const ME = "Stanley";
+export const ME = "Stanley";
 const MS_PER_DAY = 86_400_000;
 
 /** ESPN game day (1 = opening night) for a timestamp. */
 const dayOf = (ms: number) => Math.floor((ms - SEASON_START) / MS_PER_DAY) + 1;
+
+/** Today's ESPN game day. */
+export const gameDayToday = () => dayOf(Date.now());
 
 export type DataInfo = { sources: string[]; updatedAt: string | null; playerCount: number; gamesPlayed: number };
 
